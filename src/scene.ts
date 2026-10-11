@@ -1911,7 +1911,7 @@ export class ArchiveScene {
     if (musicLibrary && this.renderer.shadowMap.enabled)
       this.renderer.shadowMap.needsUpdate = true;
     if (render) {
-      this.covers?.flushUploads(this.renderer);
+      this.covers?.pump(this.renderer);
       this.composer.render();
     }
   }
@@ -1934,7 +1934,7 @@ export class ArchiveScene {
     // Normal animation uses the smaller 2 MiB / frame budget.
     for (let i = 0; i < 12 && this.covers && this.covers.getStats().dirtyTiles; i++) {
       if (this.disposed) return;
-      this.covers.flushUploads(this.renderer, 64);
+      this.covers.pump(this.renderer, 12, 64);
       await nextFrame();
     }
     // Real draws initialize transmission, shadow, AO and depth-of-field targets.

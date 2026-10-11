@@ -67,6 +67,11 @@ function fixture({ dirtyTiles = 432, compileGate, coverGate, music = true, loade
       calls.push(["upload", maximum, count]);
       return count;
     },
+    // 真实实现先按时间预算排空绘制队列，再上传瓦片；这个桩没有绘制队列，因此等价于 flushUploads。
+    pump(renderer, budgetMs, maximum) {
+      assert.ok(Number.isFinite(budgetMs), "pump 必须拿到时间预算");
+      return this.flushUploads(renderer, maximum);
+    },
     dispose() { calls.push("covers.dispose"); },
   };
   const instance = {

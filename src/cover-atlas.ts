@@ -9,6 +9,13 @@ export type CoverImage = { source: CanvasImageSource; width: number; height: num
 type DecodedCoverImage = CoverImage & { decodedSize: number; pixels: number };
 type DecodeJob = { url: string; generation: number; size: number; resolve: (image: DecodedCoverImage | undefined) => void; image?: HTMLImageElement };
 export const COVER_PAINT_SIZE = 1024;
+// 每帧留给图集的时间预算（毫秒）。滚动时不把整帧堵死，代价是封面晚几帧出现。
+export const COVER_ATLAS_BUDGET_MS = 2;
+// 滚动过快时队列的保险丝；溢出的都是已经过期的任务，丢弃即可。
+const COVER_ATLAS_QUEUE_LIMIT = 512;
+// 超过这么久没有 pump 驱动，就认为没有渲染循环（离屏校验、测试宿主），
+// 此时必须同步执行，否则排队的绘制永远不会发生。
+const COVER_ATLAS_PUMP_TIMEOUT_MS = 250;
 // Use the same UV margin at every texture resolution. A fixed two-pixel inset
 // made the 256px atlas artwork smaller than its 1024px lifted/returning copy.
 export const COVER_INSET = 1 / 64;
@@ -93,6 +100,9 @@ export function paintCover(
 export class CoverAtlas {
   readonly array: THREE.InstancedMesh;
   readonly selected: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshLambertMaterial>;
+  private readonly work: Array<() => void> = [];
+  private queueDropped = 0;
+  private lastPump = Number.NEGATIVE_INFINITY;
   private readonly atlasCanvas = document.createElement("canvas");
   private readonly selectedCanvas = document.createElement("canvas");
   private readonly tileCanvas = document.createElement("canvas");
@@ -348,6 +358,42 @@ export class CoverAtlas {
     return true;
   }
 
+  /**
+   * 解码完成的绘制排进队列，由 pump() 按帧预算排空。
+   * 队列里的闭包自带 generation / slotKeys 校验，过期的执行时是空操作。
+   */
+  private enqueue(job: () => void) {
+    // 没有渲染循环在驱动 pump 时不能排队，否则这一帧永远不会被画出来。
+    if (performance.now() - this.lastPump > COVER_ATLAS_PUMP_TIMEOUT_MS) {
+      job();
+      return;
+    }
+    if (this.work.length >= COVER_ATLAS_QUEUE_LIMIT) {
+      this.work.shift();
+      this.queueDropped += 1;
+    }
+    this.work.push(job);
+  }
+
+  /** 允许用 <html data-atlas-budget="…"> 在运行时调预算，便于测量，不改变默认值。 */
+  private paintBudget(): number {
+    // 校验宿主在 Node 里跑，没有 document。
+    const root = typeof document === "undefined" ? undefined : document.documentElement;
+    const raw = Number(root?.dataset.atlasBudget);
+    return Number.isFinite(raw) && raw >= 0 ? raw : COVER_ATLAS_BUDGET_MS;
+  }
+
+  /**
+   * 每帧调用：先按时间预算画排队的封面，再用剩余预算上传瓦片。
+   * 把「这一帧要做多少图集工作」从瓦片数量改成真实耗时，避免单帧被堵住。
+   */
+  pump(renderer: THREE.WebGLRenderer, budgetMs = this.paintBudget(), maxTiles = 8) {
+    this.lastPump = performance.now();
+    const deadline = this.lastPump + Math.max(0, budgetMs);
+    while (this.work.length && performance.now() < deadline) this.work.shift()!();
+    return this.flushUploads(renderer, maxTiles, deadline);
+  }
+
   setSlot(slot: number, record: ArchiveRecord | undefined) {
     const key = this.recordKey(record);
     if (this.slotKeys[slot] === key) return;
@@ -374,7 +420,7 @@ export class CoverAtlas {
     };
     draw();
     if (!image) void this.loadImage(record?.album?.coverUrl).then((loaded) => {
-      if (loaded) draw(loaded);
+      if (loaded) this.enqueue(() => draw(loaded));
     });
   }
 
@@ -423,7 +469,7 @@ export class CoverAtlas {
   }
 
   /** Up to 8 × 256² RGBA pixels (2 MiB), instead of re-uploading 108 MiB. */
-  flushUploads(renderer: THREE.WebGLRenderer, maxTiles = 8) {
+  flushUploads(renderer: THREE.WebGLRenderer, maxTiles = 8, deadline?: number) {
     if (this.disposed || !this.dirtySlots.size) return 0;
     if (!this.gpuInitialized) {
       // Allocate immutable GPU storage without synchronously uploading the
@@ -449,6 +495,8 @@ export class CoverAtlas {
       this.uploadedBytes += this.tileWidth * this.tileHeight * 4;
       this.uploadedTiles++;
       if (++uploaded >= limit) break;
+      // dirtySlots 是边走边删的，中途停下是安全的：剩下的下一帧继续。
+      if (deadline !== undefined && performance.now() >= deadline) break;
     }
     if (uploaded) { this.coverReady.needsUpdate = true; this.uploadBatches++; }
     return uploaded;
@@ -477,6 +525,7 @@ export class CoverAtlas {
       dirtyTiles: this.dirtySlots.size, uploadedTiles: this.uploadedTiles,
       uploadedBytes: this.uploadedBytes, uploadBatches: this.uploadBatches,
       gpuInitialized: this.gpuInitialized,
+      paintQueue: this.work.length, queueDropped: this.queueDropped, atlasBudgetMs: this.paintBudget(),
     };
   }
 
@@ -504,6 +553,7 @@ export class CoverAtlas {
     this.generation++;
     this.cancelDecodes();
     this.dirtySlots.clear();
+    this.work.length = 0;
     this.uploadTexture.dispose();
     this.atlas.dispose();
     this.selectedTexture.dispose();
