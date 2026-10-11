@@ -2,6 +2,20 @@ node_modules/
 backups/
 dist/
 .tools/
+
+# 内置开源二进制：随包分发但不入版本库，用 ffmpeg/fetch-ffmpeg.mjs 取得
+/ffmpeg/*.exe
+/ffmpeg/LICENSE.txt
+/ffmpeg/README.txt
+/ffmpeg/.download.zip
+/ffmpeg/.staging/
+/electron-out/
+
+# C# 原生服务的构建产物（用 dotnet publish 生成）
+/native/rhine-win-service/bin/
+/native/rhine-win-service/obj/
+/native/rhine-win-service/publish/
+/native/rhine-win-service/selftest.log
 *.mp4
 *.blend1
 optix7cache.db

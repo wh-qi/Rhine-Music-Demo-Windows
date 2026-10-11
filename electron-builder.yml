@@ -1,0 +1,67 @@
+appId: com.rhinelab.rhine-music.windows
+productName: Rhine Music
+copyright: Rhine Music · Windows 社区衍生版（基于 V0.4.1 主线，MIT）
+
+directories:
+  output: electron-out
+
+# 运行期真正需要的文件：主进程、被复用的后端脚本、渲染产物、生产依赖
+files:
+  - electron/**/*
+  # 主进程复用的后端脚本。music-library.mjs 还会拉进 album-introductions、qq-credits、
+  # local-music-credits，整目录带上，漏一个就会在启动时 ERR_MODULE_NOT_FOUND。
+  - scripts/**/*
+  - dist/**/*
+  - package.json
+  - "!**/*.map"
+  - "!**/*.ts"
+
+# 关闭 asar：Electron 的 ESM 解析在 asar 内不保留相对说明符（主进程 import './music-library.mjs'
+# 会被解析到 resources\ 下，启动即 ERR_MODULE_NOT_FOUND）。主进程代码必须落在真实目录里，
+# 而且随包 256 MB 的 FFmpeg 本来就在 asar 之外，归档带来的收益很有限。
+asar: false
+
+extraResources:
+  # 许可与署名随包分发
+  - from: .
+    to: licenses
+    filter:
+      - LICENSE
+      - NOTICE.md
+      - README.original.md
+      - WINDOWS.md
+  # 内置 LGPL FFmpeg（完整构建：正确性优先于体积）
+  - from: ffmpeg
+    to: unpacked/ffmpeg
+    filter:
+      - ffmpeg.exe
+      - ffprobe.exe
+      - LICENSE.txt
+      - README.md
+  # 原生音频服务（C# / .NET 8 自包含单文件）
+  - from: native/rhine-win-service/publish
+    to: unpacked
+    filter:
+      - rhine-win-service.exe
+
+win:
+  # 直接复用仓库里已有的 Rhine Lab 图标，不新增美术资源
+  icon: public/icons/icon-512.png
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  artifactName: ${productName}-${version}-win-setup.${ext}
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Rhine Music
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}

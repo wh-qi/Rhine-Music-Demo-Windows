@@ -33,7 +33,7 @@ import {
   type QualityPreset,
   type RenderQuality,
 } from "./render-quality";
-import { MusicPlayer, type MusicPlayerState } from "./music-player";
+import { MusicPlayer, type MusicPlayerState, type AudioOutputFormat } from "./music-player";
 import { normalizeSongTransition, type SongTransitionMode } from "./music-song-transition";
 import { ModelViewer } from "./model-viewer";
 import { TerminalAudio } from "./audio";
@@ -106,6 +106,7 @@ const preferences = {
     rememberColumnPosition: true,
     audioBackend: "browser" as "browser" | "coreaudio",
     outputDeviceId: "default",
+    bitPerfect: false,
     quality: "original" as QualityPreset,
     reduced: false,
     volume: 0.65,
@@ -130,6 +131,7 @@ const preferences = {
       rememberColumnPosition: boolean;
       audioBackend: "browser" | "coreaudio";
       outputDeviceId: string;
+      bitPerfect: boolean;
       quality: QualityPreset;
       reduced: boolean;
       volume: number;
@@ -166,6 +168,7 @@ preferences.arrayMode = normalizeMusicArrayMode(preferences.arrayMode);
 preferences.rememberColumnPosition = preferences.rememberColumnPosition !== false;
 preferences.audioBackend = preferences.audioBackend === "coreaudio" ? "coreaudio" : "browser";
 if (typeof preferences.outputDeviceId !== "string") preferences.outputDeviceId = "default";
+preferences.bitPerfect = preferences.bitPerfect === true;
 preferences.motionSpeed = normalizeMusicMotionSpeed(preferences.motionSpeed);
 setMusicMotionSpeed(preferences.motionSpeed);
 const syncMotionScale = () => document.documentElement.style.setProperty("--music-motion-scale", String(1 / getMusicMotionSpeed()));
@@ -235,6 +238,8 @@ const player = new MusicPlayer({
   bgmEnabled: preferences.bgm,
   bgmVolume: preferences.bgmVolume,
 });
+// bit-perfect 默认关闭；开启时音量锁定 100%，所以恢复顺序必须晚于音量。
+player.setBitPerfect(preferences.bitPerfect);
 const themeNames: Record<Theme, string> = {
   day: "暖昼",
   night: "深夜",
@@ -1394,9 +1399,17 @@ player.subscribe((state) => {
 });
 
 function audioOutputMarkup() {
-  return `<section class="panel-section"><h3>音频输出</h3><label class="settings-row"><span>输出方式<small>歌曲播放使用的音频内核</small></span><select id="audio-backend" aria-label="音频输出方式"><option value="browser">浏览器输出</option><option value="coreaudio">Mac 原生 CoreAudio</option></select></label><label class="settings-row" id="audio-device-row"><span>输出设备<small>仅改变本播放器的歌曲输出</small></span><select id="audio-device" aria-label="音频输出设备"></select></label><p id="audio-output-status" role="status"></p><button class="text-button" data-action="refresh-output">刷新输出设备 ↻</button><p>APE、FLAC、WAV 等格式在本机解码；DSF / DFF 在本机转为 PCM 播放，源文件保持不变。原生输出直接连接所选设备；浏览器输出沿用浏览器的声音设备。</p></section>`;
+  return `<section class="panel-section"><h3>音频输出</h3><label class="settings-row"><span>输出方式<small>歌曲播放使用的音频内核</small></span><select id="audio-backend" aria-label="音频输出方式"><option value="browser">浏览器输出</option><option value="coreaudio">${windowsDesktop() ? "Windows 原生输出（WASAPI）" : "Mac 原生 CoreAudio"}</option></select></label><label class="settings-row" id="audio-device-row"><span>输出设备<small>仅改变本播放器的歌曲输出</small></span><select id="audio-device" aria-label="音频输出设备"></select></label><p id="audio-output-status" role="status"></p><p id="audio-format" role="status"></p><p id="audio-signal-path"></p><label class="settings-row"><span>bit-perfect 模式<small>锁定应用内音量为 100%，不对样本做任何衰减</small></span><input type="checkbox" id="bit-perfect"></label><p id="bit-perfect-hint" role="status"></p><button class="text-button" data-action="refresh-output">刷新输出设备 ↻</button><p>APE、FLAC、WAV 等格式在本机解码；DSF / DFF 在本机转为 PCM 播放，源文件保持不变。原生输出直接连接所选设备；浏览器输出沿用浏览器的声音设备。</p></section>`;
 }
 function syncAudioOutputUI() {
+  if (playerState) {
+    // bit-perfect 锁定应用内音量：滑块必须如实反映，不能停在旧值上。
+    const volume = document.querySelector<HTMLInputElement>("#volume");
+    if (volume) {
+      volume.disabled = playerState.bitPerfect;
+      volume.value = playerState.bitPerfect ? "100" : String(Math.round(playerState.volume * 100));
+    }
+  }
   const backend = document.querySelector<HTMLSelectElement>("#audio-backend");
   if (!backend || !playerState) return;
   backend.value = playerState.backend;
@@ -1415,7 +1428,34 @@ function syncAudioOutputUI() {
   $("#audio-output-status").textContent = lightingDemo ? "演示模式只展示封面；请通过音乐播放器启动器使用音频输出。" :
     !apiAvailable ? "请通过音乐播放器启动器连接本机音频服务。" : outputBusy ? "正在连接音频输出…" :
     playerState.outputError || playerState.transitionWarning || outputStatus;
+  const native = playerState.backend === "coreaudio";
+  const format = playerState.outputFormat;
+  const bitPerfect = document.querySelector<HTMLInputElement>("#bit-perfect");
+  if (bitPerfect) {
+    bitPerfect.disabled = outputBusy || !apiAvailable || !native;
+    bitPerfect.checked = playerState.bitPerfect;
+  }
+  const decimal = (value: number) => (value / 1000).toFixed(value % 1000 ? 1 : 0);
+  // 实际输出格式只报服务真实协商到的结果，不写死也不美化。
+  $("#audio-format").textContent = !native || !format ? "" :
+    decimal(format.sampleRate) + " kHz / " + format.validBits + "-bit / " +
+    (format.shareMode === "exclusive" ? "独占" : "共享") + " / " +
+    (format.isFloat ? "32-bit float 输出" : "整数输出");
+  $("#audio-signal-path").textContent = native && format && playerState.currentTrack ? signalPathText(playerState.currentTrack, format) : "";
+  $("#bit-perfect-hint").textContent = playerState.bitPerfect
+    ? "bit-perfect 模式下请使用功放/DAC 或系统音量调节。"
+    : format && format.shareMode === "shared" ? "关闭设备音频增强以获得更好效果。" : "";
   $<HTMLButtonElement>('[data-action="refresh-output"]').disabled = outputBusy || !apiAvailable || lightingDemo;
+}
+
+/** 信号路径：源格式 → 解码 → 输出 → DAC。发生重采样时显式写出来。 */
+function signalPathText(track: NonNullable<MusicPlayerState["currentTrack"]>, format: AudioOutputFormat): string {
+  const decimal = (value: number) => (value / 1000).toFixed(value % 1000 ? 1 : 0);
+  const rate = track.sampleRate ?? 0;
+  const source = (track.format ?? "音频") + " " + (rate ? decimal(rate) + "kHz/" : "") + (track.bitsPerSample ?? "?") + "bit";
+  const decoded = track.sampleRate === format.sampleRate ? "FFmpeg 解码，无重采样" : "FFmpeg 解码，重采样到 " + format.sampleRate + " Hz";
+  const output = "WASAPI " + (format.shareMode === "exclusive" ? "独占" : "共享") + " " + decimal(format.sampleRate) + "/" + format.validBits;
+  return source + " → [" + decoded + "] → [" + output + "] → DAC";
 }
 async function refreshAudioOutputs(restore = false) {
   if (lightingDemo || !apiAvailable) { syncAudioOutputUI(); return; }
@@ -1424,7 +1464,7 @@ async function refreshAudioOutputs(restore = false) {
     const capabilities = await player.refreshOutputs();
     audioOutputsChecked = true;
     outputStatus = capabilities.decoderAvailable ? capabilities.nativeAvailable ?
-      "本机解码与 CoreAudio 已就绪。" : "本机解码已就绪；原生输出暂不可用。" :
+      (windowsDesktop() ? "本机解码与 WASAPI 已就绪。" : "本机解码与 CoreAudio 已就绪。") : "本机解码已就绪；原生输出暂不可用。" :
       "未检测到 FFmpeg，当前仅可播放浏览器支持的格式。";
     if (restore && preferences.audioBackend === "coreaudio")
       await player.setBackend("coreaudio", preferences.outputDeviceId);
@@ -1440,7 +1480,7 @@ async function changeAudioOutput(backend: "browser" | "coreaudio", deviceId: str
     preferences.audioBackend = player.state.backend;
     preferences.outputDeviceId = player.state.outputDeviceId;
     savePrefs();
-    outputStatus = backend === "coreaudio" ? "歌曲通过 Mac 原生设备输出。" : "歌曲通过浏览器输出。";
+    outputStatus = backend === "coreaudio" ? (windowsDesktop() ? "歌曲通过 Windows 原生设备输出。" : "歌曲通过 Mac 原生设备输出。") : "歌曲通过浏览器输出。";
   } catch (error) { outputStatus = (error as Error).message; notify(outputStatus); }
   finally { outputBusy = false; syncAudioOutputUI(); }
 }
@@ -1512,7 +1552,7 @@ function openPanel(next: Panel) {
   panelTransition = new SurfaceTransition(scrim, $(".music-panel"));
   panelTransition.show(preferences.reduced);
   effects.play("page-open");
-  if (next === "library") renderLibraryPanel();
+  if (next === "library") renderLibraryPanel(true);
   if (next === "search") renderSearchPanel();
   if (next === "settings") renderSettingsPanel();
   (
@@ -1520,9 +1560,102 @@ function openPanel(next: Panel) {
     $("#music-panel-root button")
   )?.focus({ preventScroll: true });
 }
-function renderLibraryPanel() {
+/** 桌面外壳桥（Electron）。浏览器里不存在，此时全部行为与原来完全一致。 */
+const desktopBridge = () =>
+  (window as Window & {
+    rhineDesktop?: {
+      showOpenDirectories(): Promise<string[]>;
+      pathForFile?(file: File): string;
+      onTransport?(handler: (action: string) => void): () => void;
+      platform: string;
+      version: string;
+    };
+  }).rhineDesktop;
+const windowsDesktop = () => desktopBridge()?.platform === "win32";
+
+// 音乐目录以标签列表编辑；手工粘贴保留在「高级」折叠区里，两者始终是同一份列表。
+let pendingRoots: string[] = [];
+function syncPendingRootsFromEditor() {
+  const editor = document.querySelector<HTMLTextAreaElement>("#music-roots");
+  if (editor)
+    pendingRoots = editor.value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+}
+function collectRoots(): string[] {
+  syncPendingRootsFromEditor();
+  return [...new Set(pendingRoots)];
+}
+/** 只有「打开音乐库面板」这一条路径会从已保存的曲库重新播种，增删标签不会。 */
+function addRoots(paths: readonly string[]) {
+  if (!paths.length) return;
+  const additions = [...paths];
+  if (panel !== "library") openPanel("library");
+  pendingRoots = [...new Set([...collectRoots(), ...additions])];
+  renderLibraryPanel(false);
+}
+function rootsTagMarkup(path: string) {
+  return `<span style="display:inline-flex;align-items:center;gap:8px;max-width:100%;margin:0 8px 8px 0;padding:5px 10px;border:1px solid currentColor;border-radius:999px;font-size:12px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(path)}</span><button type="button" data-action="remove-root" data-path="${esc(path)}" aria-label="移除 ${esc(path)}" style="all:unset;cursor:pointer;font-size:14px;line-height:1">×</button></span>`;
+}
+async function pickRoots() {
+  const bridge = desktopBridge();
+  if (!bridge) return;
+  syncPendingRootsFromEditor();
+  try {
+    addRoots(await bridge.showOpenDirectories());
+  } catch (error) {
+    notify((error as Error).message);
+  }
+}
+/** 拖拽文件夹进窗口：只接受目录，单个文件取其所在目录。 */
+function installRootDropTarget() {
+  if (!desktopBridge()?.pathForFile) return;
+  window.addEventListener("dragover", (event) => {
+    if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
+  });
+  window.addEventListener("drop", (event) => {
+    const bridge = desktopBridge();
+    const items = [...(event.dataTransfer?.items ?? [])];
+    if (!bridge?.pathForFile || !items.some((item) => item.kind === "file")) return;
+    event.preventDefault();
+    const paths: string[] = [];
+    for (const item of items) {
+      if (item.kind !== "file") continue;
+      const file = item.getAsFile();
+      if (!file) continue;
+      const path = bridge.pathForFile(file);
+      if (!path) continue;
+      const entry = (item as DataTransferItem & { webkitGetAsEntry?: () => { isDirectory: boolean } | null }).webkitGetAsEntry?.();
+      if (entry && !entry.isDirectory) {
+        const parent = path.replace(/[\\/][^\\/]+$/, "");
+        if (parent) paths.push(parent);
+        continue;
+      }
+      paths.push(path);
+    }
+    if (!paths.length) return;
+    addRoots(paths);
+    notify(`已添加 ${paths.length} 个文件夹，点「保存目录并扫描」开始扫描。`);
+  });
+}
+installRootDropTarget();
+// 托盘的播放/暂停、上一首、下一首：主进程只发指令，实际状态仍由播放器统一维护。
+desktopBridge()?.onTransport?.((action) => {
+  if (action === "toggle") playerState.currentTrack ? void player.toggle() : playAlbum();
+  else if (action === "previous") void player.previous();
+  else if (action === "next") void player.next();
+  else if (action === "stop") player.stop();
+});
+
+function renderLibraryPanel(reseed = false) {
+  if (reseed) pendingRoots = library.roots.map((root) => root.path);
+  const bridge = desktopBridge();
+  const rootsEditor = bridge
+    ? `<label class="field-label">音乐文件夹<span>可添加多个文件夹</span></label><div style="margin-bottom:4px">${pendingRoots.length ? pendingRoots.map(rootsTagMarkup).join("") : '<span style="font-size:12px;opacity:.6">还没有添加文件夹，也可以直接把文件夹拖进窗口</span>'}</div><div class="panel-actions"><button class="primary-button" data-action="add-roots">添加文件夹 ↗</button></div><details class="panel-section"><summary>高级 · 手动输入路径</summary><label class="field-label" for="music-roots">音乐文件夹<span>多个目录各占一行</span></label><textarea id="music-roots" rows="3" placeholder="也可以直接粘贴绝对路径，每行一个">${esc(pendingRoots.join("\n"))}</textarea></details>`
+    : `<label class="field-label" for="music-roots">音乐文件夹<span>多个目录各占一行</span></label><textarea id="music-roots" rows="3" placeholder="/Users/你的用户名/Music">${esc(pendingRoots.join("\n"))}</textarea>`;
   $("#panel-body").innerHTML =
-    `<p class="panel-intro">根目录中的每首单曲各是一张卡片，优先使用自身内嵌封面。子文件夹按专辑展示，优先使用文件夹封面。</p><label class="field-label" for="music-roots">音乐文件夹<span>多个目录各占一行</span></label><textarea id="music-roots" rows="3" placeholder="/Users/你的用户名/Music">${esc(library.roots.map((r) => r.path).join("\n"))}</textarea><div class="panel-actions"><button class="primary-button" data-action="scan">保存目录并扫描 ↗</button><button data-action="rescan">重新扫描</button></div><div id="scan-status" class="scan-status"></div><div class="library-metrics"><div><b>${library.albums.length}</b><span>专辑</span></div><div><b>${library.albums.reduce((n, a) => n + a.tracks.length, 0)}</b><span>曲目</span></div><div><b>${library.genres.filter((g) => library.albums.some((a) => a.genreId === g.id)).length}</b><span>流派</span></div></div><section class="panel-section"><h3>本地分类</h3><p>编辑展示流派、别名与专辑人工分类；不修改音乐文件的标签。</p><button data-action="edit-genres" class="text-button">编辑流派归并规则 ↗</button></section><section class="panel-section"><h3>封面显示</h3><p>方形、竖版、横版封面均保持原始比例，完整放入卡片正面。没有封面时显示专辑名称占位，不使用其他专辑的图片。</p>${!library.albums.length ? '<button data-action="demo" class="text-button">查看演示封面 ↗</button>' : ""}</section>`;
+    `<p class="panel-intro">根目录中的每首单曲各是一张卡片，优先使用自身内嵌封面。子文件夹按专辑展示，优先使用文件夹封面。</p>${rootsEditor}<div class="panel-actions"><button class="primary-button" data-action="scan">保存目录并扫描 ↗</button><button data-action="rescan">重新扫描</button></div><div id="scan-status" class="scan-status"></div><div class="library-metrics"><div><b>${library.albums.length}</b><span>专辑</span></div><div><b>${library.albums.reduce((n, a) => n + a.tracks.length, 0)}</b><span>曲目</span></div><div><b>${library.genres.filter((g) => library.albums.some((a) => a.genreId === g.id)).length}</b><span>流派</span></div></div><section class="panel-section"><h3>本地分类</h3><p>编辑展示流派、别名与专辑人工分类；不修改音乐文件的标签。</p><button data-action="edit-genres" class="text-button">编辑流派归并规则 ↗</button></section><section class="panel-section"><h3>封面显示</h3><p>方形、竖版、横版封面均保持原始比例，完整放入卡片正面。没有封面时显示专辑名称占位，不使用其他专辑的图片。</p>${!library.albums.length ? '<button data-action="demo" class="text-button">查看演示封面 ↗</button>' : ""}</section>`;
   updateScanStatus();
 }
 function renderMusicBrainzSettings() {
@@ -1641,12 +1774,7 @@ async function scan(saveRoots = false) {
   scanSubmitting = true;
   ++libraryStateVersion;
   try {
-    const roots = saveRoots
-      ? $<HTMLTextAreaElement>("#music-roots")
-          .value.split("\n")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : undefined;
+    const roots = saveRoots ? collectRoots() : undefined;
     const next = await request<MusicLibrary>("/api/library/scan", roots ? { roots } : {});
     ++libraryStateVersion; // Discard polls started before this accepted scan.
     notify("开始扫描音乐库，已有专辑可以继续浏览。");
@@ -1905,6 +2033,16 @@ document.addEventListener("click", (e) => {
     case "rescan":
       void scan();
       break;
+    case "add-roots":
+      void pickRoots();
+      break;
+    case "remove-root": {
+      const removed = target.dataset.path ?? "";
+      syncPendingRootsFromEditor();
+      pendingRoots = pendingRoots.filter((path) => path !== removed);
+      renderLibraryPanel(false);
+      break;
+    }
     case "credits-album":
       void queryCredits(true);
       break;
@@ -1972,6 +2110,11 @@ document.addEventListener("input", (e) => {
     });
     updateQuality();
   }
+  if (el.id === "bit-perfect") {
+    preferences.bitPerfect = el.checked;
+    player.setBitPerfect(el.checked);
+    savePrefs();
+  }
   if (el.id === "bgm-volume") {
     preferences.bgmVolume = Number(el.value) / 100;
     player.setBgmVolume(preferences.bgmVolume);
@@ -1989,6 +2132,8 @@ document.addEventListener("input", (e) => {
   }
   if (el.id === "album-search") renderSearchResults();
   if (el.id === "volume") {
+    // bit-perfect 下应用内音量锁定 100%：软件衰减就是重写样本。
+    if (playerState.bitPerfect) { el.value = "100"; return; }
     preferences.volume = Number(el.value) / 100;
     player.setVolume(preferences.volume);
     savePrefs();

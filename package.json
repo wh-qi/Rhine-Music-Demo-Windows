@@ -27,7 +27,14 @@
     "check:cover": "node scripts/check-music-cover.mjs",
     "check:v040": "npm run check:v041",
     "check:startup": "node scripts/check-music-startup.mjs && node scripts/check-music-renderer-startup.mjs && node scripts/check-quality.mjs",
-    "check:v041": "npm run check:music && npm run check:audio && npm run check:overview && npm run check:cover && npm run check:startup && npm run check:lighting && npm run check:interaction && npm run check:viewport && npm run check:content && npm run check:credits && node scripts/check-music-launcher.mjs"
+    "check:v041": "npm run check:music && npm run check:audio && npm run check:overview && npm run check:cover && npm run check:startup && npm run check:lighting && npm run check:interaction && npm run check:viewport && npm run check:content && npm run check:credits && node scripts/check-music-launcher.mjs",
+    "desktop": "electron .",
+    "desktop:ffmpeg": "node ffmpeg/fetch-ffmpeg.mjs",
+    "desktop:build": "npm run build && electron-builder --win",
+    "check:desktop": "node --test scripts/check-music-desktop.mjs",
+    "build:win-service": "dotnet publish native/rhine-win-service/RhineWinService.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=none -o native/rhine-win-service/publish",
+    "selftest:win-service": "node scripts/run-win-service-selftest.mjs",
+    "check:win-service": "node --test scripts/check-win-service.mjs"
   },
   "dependencies": {
     "@kitlangton/rolling-number": "0.4.1",
@@ -37,11 +44,16 @@
   },
   "devDependencies": {
     "@types/three": "^0.183.0",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
     "prettier": "^3.9.6",
     "typescript": "^5.9.3",
     "vite": "^7.3.1"
   },
   "engines": {
     "node": ">=22.12.0"
-  }
+  },
+  "main": "electron/main.js",
+  "description": "Rhine Music · Windows 桌面版（社区衍生版）",
+  "author": "Rhine Music Windows 社区衍生版（上游作者与许可见 NOTICE.md）"
 }

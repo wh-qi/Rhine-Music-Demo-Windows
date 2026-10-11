@@ -11,6 +11,8 @@ let tell: (message: string) => void = () => {};
 const installed = () => matchMedia("(display-mode: standalone)").matches ||
   Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
 const ios = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+// 桌面外壳（Electron）自带固定版 Chromium，不需要 Service Worker 离线副本，也没有“安装到设备”。
+const desktopShell = () => Boolean((window as Window & { rhineDesktop?: unknown }).rhineDesktop);
 
 window.addEventListener("beforeinstallprompt", event => {
   event.preventDefault();
@@ -21,6 +23,7 @@ window.addEventListener("appinstalled", () => { installPrompt = undefined; refre
 matchMedia("(display-mode: standalone)").addEventListener("change", refresh);
 
 export function pwaSettingsMarkup() {
+  if (desktopShell()) return "";
   const status = !import.meta.env.PROD ? "开发预览不保存离线副本。"
     : !window.isSecureContext ? "使用 HTTPS 地址后可保存离线副本。"
     : !("serviceWorker" in navigator) ? "当前浏览器支持在线使用。"
@@ -41,6 +44,8 @@ function refresh() {
 
 export async function initPwa(notify: (message: string) => void) {
   tell = notify;
+  // app:// 被注册为 secure 后 window.isSecureContext 为 true，这里必须先行短路，否则生产构建会真的注册 sw.js。
+  if (desktopShell()) return;
   if (started || !import.meta.env.PROD || !window.isSecureContext || !("serviceWorker" in navigator)) return;
   started = true;
   try {

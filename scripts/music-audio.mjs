@@ -3,8 +3,11 @@ import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import os from 'node:os'
 
 const SOURCE = fileURLToPath(new URL('../native/RhineAudio.swift', import.meta.url))
+// Windows 服务随包分发：打包后 native/ 在 app.asar 内，可执行文件由 electron-builder 解包到 app.asar.unpacked。
+const WINDOWS_SERVICE = fileURLToPath(new URL('../native/rhine-win-service/publish/rhine-win-service.exe', import.meta.url)).replace(`${path.sep}app.asar${path.sep}`, `${path.sep}app.asar.unpacked${path.sep}`)
 const MAX_PCM_BYTES = 2 * 1024 ** 3
 const MAX_CACHE_BYTES = 4 * 1024 ** 3
 // Never let a mislabeled audio file open concat/HLS playlists or secondary local paths.
@@ -12,18 +15,45 @@ const AUDIO_DEMUXERS = 'ape,wav,flac,mov,mp3,aac,aiff,ogg,wv,asf,dsf,iff'
 const isDsdCodec = (codec) => /^(dsd_(lsbf|msbf)(_planar)?|dst)$/.test(codec)
 const DSD_PCM_RATE = 176400
 const TRANSITION_MODES = new Set(['fade-out', 'fade-in-out', 'gapless'])
+const WINDOWS = process.platform === 'win32'
+// 错误文案按平台给出；darwin 文案与 V0.4.1 逐字一致。
+const NATIVE_EXITED = WINDOWS ? '原生音频进程已退出，请重新选择输出' : 'CoreAudio 进程已退出，请重新选择输出'
+const NATIVE_TIMEOUT = WINDOWS ? '原生音频进程响应超时' : 'CoreAudio 响应超时'
+// Windows 的 NTFS 没有 POSIX 权限位，chmod 无意义。
+const chmodIfPosix = async (file, mode) => { if (!WINDOWS) await fs.chmod(file, mode) }
+
+/**
+ * 默认数据目录：Windows 为 %LOCALAPPDATA%\\RhineMusic\\music-data-v3（安装目录只读），
+ * 其它平台仍是工程旁的 music-data-v3。MUSIC_DATA_DIR 覆盖机制不变。
+ */
+export function defaultDataDir(projectDir) {
+  if (process.env.MUSIC_DATA_DIR) return process.env.MUSIC_DATA_DIR
+  if (WINDOWS) return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'RhineMusic', 'music-data-v3')
+  return path.join(projectDir, '..', 'music-data-v3')
+}
 const aborted = () => Object.assign(new Error('音频准备已取消'), { name: 'AbortError', status: 499 })
 const failure = (message, status = 503) => Object.assign(new Error(message), { status })
-const exists = async (file) => { try { await fs.access(file, constants.X_OK); return file } catch { return null } }
+// Windows 没有可执行位，X_OK 退化为 F_OK 语义；其它平台保持原样。
+const exists = async (file) => { try { await fs.access(file, WINDOWS ? constants.F_OK : constants.X_OK); return file } catch { return null } }
+// Windows 的可执行文件带扩展名，必须按 PATHEXT 展开，否则 PATH 中的 ffmpeg.exe 永远找不到。
+const windowsNames = (name) => {
+  if (path.extname(name)) return [name]
+  const allowed = /^\.(exe|cmd|bat|com)$/i
+  const extensions = (process.env.PATHEXT ?? '').split(';').map((item) => item.trim()).filter((item) => allowed.test(item))
+  const list = extensions.length ? extensions : ['.COM', '.EXE', '.BAT', '.CMD']
+  return [...new Set([...list.map((extension) => name + extension.toLowerCase()), ...list.map((extension) => name + extension), name])]
+}
 export async function findExecutable(name, override) {
   if (override) {
     if (!path.isAbsolute(override)) throw failure(`${name} 路径必须是绝对路径`)
     return exists(override)
   }
-  for (const candidate of [...(override ? [override] : []), `/opt/homebrew/bin/${name}`, `/usr/local/bin/${name}`, `/usr/bin/${name}`, ...(process.env.PATH ?? '').split(path.delimiter).filter(Boolean).map((dir) => path.join(dir, name))]) {
-    if (override && candidate === override && !path.isAbsolute(candidate)) throw failure(`${name} 路径必须是绝对路径`)
-    if (await exists(candidate)) return candidate
-  }
+  // macOS 的 Homebrew 与系统目录在 Windows 上不存在；win32 下跳过这些候选（代码保留供 darwin 使用）。
+  const directories = WINDOWS
+    ? (process.env.PATH ?? '').split(path.delimiter).filter(Boolean)
+    : ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', ...(process.env.PATH ?? '').split(path.delimiter).filter(Boolean)]
+  const candidates = directories.flatMap((dir) => (WINDOWS ? windowsNames(name) : [name]).map((entry) => path.join(dir, entry)))
+  for (const candidate of candidates) if (await exists(candidate)) return candidate
   return null
 }
 export async function checkedSource(descriptor) {
@@ -69,7 +99,7 @@ export class AudioDecoder {
       this.ffprobe = await findExecutable('ffprobe', this.ffprobeOverride ?? process.env.FFPROBE_PATH)
       if (!this.ffmpeg || !this.ffprobe) { this.error = '未找到 FFmpeg / ffprobe，请安装 FFmpeg 后重新启动'; this.ffmpeg = null; this.ffprobe = null; return }
       this.version = (await runProcess(this.ffmpeg, ['-version'], { timeout: 5000 })).split('\n')[0]
-      await fs.mkdir(this.cacheDir, { recursive: true, mode: 0o700 })
+      await fs.mkdir(this.cacheDir, { recursive: true, ...(WINDOWS ? {} : { mode: 0o700 }) })
     })().catch((error) => { this.error = error.message; this.ffmpeg = null })
     await this.ready
     return this
@@ -176,8 +206,8 @@ export class AudioDecoder {
         ...(targetSampleRate !== undefined ? { normalizedSampleRate: targetSampleRate, sourceSampleRate: Number(stream.sample_rate) } : {}),
         ...(dsd ? { conversion: 'dsd-to-pcm', sourceSampleRate: Number(stream.sample_rate) * 8, sourceBitsPerSample: 1 } : {}),
       }
-      await fs.chmod(temporary, 0o600); await fs.rename(temporary, target)
-      await fs.writeFile(metadataFile, JSON.stringify(metadata), { mode: 0o600 })
+      await chmodIfPosix(temporary, 0o600); await fs.rename(temporary, target)
+      await fs.writeFile(metadataFile, JSON.stringify(metadata), WINDOWS ? {} : { mode: 0o600 })
       this.pruneTask = (this.pruneTask ?? Promise.resolve()).catch(() => {}).then(() => this.prune(target))
       await this.pruneTask
       return { path: target, allowedRoot: this.cacheDir, mime: 'audio/wav', ...metadata, cached: false }
@@ -200,15 +230,23 @@ export class AudioDecoder {
 }
 
 export class NativeAudioOutput {
-  constructor({ dataDir, decoder, trackFile }) {
-    this.dataDir = dataDir; this.decoder = decoder; this.trackFile = trackFile
+  constructor({ dataDir, decoder, trackFile, trackInfo }) {
+    this.dataDir = dataDir; this.decoder = decoder; this.trackFile = trackFile; this.trackInfo = trackInfo
+    // 媒体键由原生服务经 stdout 事件推来（SMTC），宿主自行决定怎么处理。
+    this.onMediaKey = null
     this.pending = new Map(); this.serial = 0; this.operation = 0; this.deviceId = 'default'; this.desiredVolume = 0.7; this.disposed = false
     this.transitionSettings = {}
     this.nextOperation = 0
   }
   async init() {
     if (!this.ready) this.ready = (async () => {
-      if (process.platform !== 'darwin') throw failure('CoreAudio 输出仅适用于 macOS')
+      // Windows 直接使用内置的 RhineWinService，不在运行时编译任何东西。
+      if (process.platform === 'win32') {
+        this.binary = await exists(process.env.RHINE_WIN_SERVICE ?? WINDOWS_SERVICE)
+        if (!this.binary) throw failure('内置 Windows 音频服务缺失，请重新安装后重试')
+        return
+      }
+      if (process.platform !== 'darwin') throw failure('原生输出仅支持 macOS 与 Windows')
       const swift = await findExecutable('swiftc')
       if (!swift) throw failure('原生输出需要 Apple Command Line Tools（swiftc）')
       const hash = createHash('sha256').update(await fs.readFile(SOURCE)).update(process.arch).digest('hex').slice(0, 16)
@@ -233,11 +271,17 @@ export class NativeAudioOutput {
       buffer += chunk
       for (let index; (index = buffer.indexOf('\n')) >= 0;) {
         const line = buffer.slice(0, index); buffer = buffer.slice(index + 1)
-        try { const reply = JSON.parse(line); const request = this.pending.get(reply.id); if (request) { this.pending.delete(reply.id); clearTimeout(request.timer); reply.error ? request.reject(failure(reply.error, 422)) : request.resolve(reply.result) } } catch {}
+        try {
+          const reply = JSON.parse(line)
+          const request = this.pending.get(reply.id)
+          if (request) { this.pending.delete(reply.id); clearTimeout(request.timer); reply.error ? request.reject(failure(reply.error, 422)) : request.resolve(reply.result) }
+          // 没有 id 的行是服务主动推的事件，不是任何请求的响应。
+          else if (reply.event === 'media' && typeof reply.button === 'string') this.onMediaKey?.(reply.button)
+        } catch {}
       }
     })
     child.stderr.on('data', () => {})
-    const failed = () => { if (this.process === child) this.process = null; for (const entry of this.pending.values()) { clearTimeout(entry.timer); entry.reject(failure('CoreAudio 进程已退出，请重新选择输出')) }; this.pending.clear() }
+    const failed = () => { if (this.process === child) this.process = null; for (const entry of this.pending.values()) { clearTimeout(entry.timer); entry.reject(failure(NATIVE_EXITED)) }; this.pending.clear() }
     child.on('error', failed); child.on('exit', failed)
     child.stdin.on('error', () => {})
   }
@@ -245,7 +289,7 @@ export class NativeAudioOutput {
     await this.start()
     return new Promise((resolve, reject) => {
       const id = ++this.serial
-      const timer = setTimeout(() => { this.pending.delete(id); reject(failure('CoreAudio 响应超时')); this.process?.kill() }, 10000)
+      const timer = setTimeout(() => { this.pending.delete(id); reject(failure(NATIVE_TIMEOUT)); this.process?.kill() }, 10000)
       this.pending.set(id, { resolve, reject, timer })
       this.process.stdin.write(`${JSON.stringify({ ...command, id })}\n`)
     })
@@ -269,7 +313,8 @@ export class NativeAudioOutput {
     return state
   }
   async command(value) {
-    const actions = new Set(['play', 'pause', 'stop', 'seek', 'volume', 'device', 'state', 'transition', 'prepareNext', 'cancelNext'])
+    // bitPerfect 是 P5 需要的第 11 个动作：开启后服务端连淡变都不做，样本零改写。
+    const actions = new Set(['play', 'pause', 'stop', 'seek', 'volume', 'device', 'state', 'transition', 'prepareNext', 'cancelNext', 'bitPerfect'])
     if (!actions.has(value.action)) throw failure('未知音频操作', 400)
     if (value.deviceId !== undefined && !/^(default|\d+)$/.test(value.deviceId)) throw failure('无效输出设备', 400)
     for (const key of ['position', 'volume']) if (value[key] !== undefined && (typeof value[key] !== 'number' || !Number.isFinite(value[key]) || value[key] < 0)) throw failure(`无效 ${key}`, 400)
@@ -288,6 +333,7 @@ export class NativeAudioOutput {
       return this.observeState(await this.send({ action: 'transition', ...this.transitionSettings }))
     }
     if (value.action === 'volume') { this.desiredVolume = value.volume ?? this.desiredVolume; return this.send({ action: 'volume', volume: this.desiredVolume }) }
+    if (value.action === 'bitPerfect') return this.send({ action: 'bitPerfect', enabled: value.enabled === true })
     if (value.action === 'state') return this.observeState(await this.send({ action: 'state' }))
     if (value.action === 'cancelNext') return this.cancelNext()
     if (value.action === 'prepareNext') {
@@ -363,7 +409,8 @@ export class NativeAudioOutput {
       try {
         if (operation !== this.operation) throw aborted()
         this.preparing = null
-        const state = await this.send({ action: 'play', path: decoded.path, trackId: value.trackId, position: value.position, deviceId: this.deviceId, volume: this.desiredVolume, ...this.transitionSettings })
+        const metadata = this.trackInfo?.(value.trackId)
+        const state = await this.send({ action: 'play', path: decoded.path, trackId: value.trackId, position: value.position, deviceId: this.deviceId, volume: this.desiredVolume, ...(metadata ? { metadata } : {}), ...this.transitionSettings })
         if (operation !== this.operation) throw aborted()
         this.activeLease = { trackId: value.trackId, release: decoded.release }
         return this.observeState(state)

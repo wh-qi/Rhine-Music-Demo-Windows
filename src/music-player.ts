@@ -2,11 +2,16 @@ import type { MusicTrack } from "./music-types";
 import { normalizeSongTransition, type SongTransitionMode } from "./music-song-transition.ts";
 import { AudioClockSuspended, BrowserGaplessPlayer } from "./music-browser-gapless.ts";
 
+/** 桌面外壳桥（Electron）。浏览器里不存在，此时保持原有 macOS 文案。 */
+const windowsDesktop = () =>
+  (window as Window & { rhineDesktop?: { platform?: string } }).rhineDesktop?.platform === "win32";
+
 export interface AudioOutputDevice { id: string; name: string }
 export interface AudioCapabilities {
   decoderAvailable: boolean;
   nativeAvailable: boolean;
   devices: AudioOutputDevice[];
+  nativeFormat?: { sampleRate: number; bits: number; validBits: number; isFloat: boolean; shareMode: "shared" | "exclusive"; bitPerfect: boolean } | null;
   decoder?: string | null;
   decoderError?: string | null;
   nativeError?: string | null;
@@ -15,6 +20,16 @@ interface NativeState {
   trackId: string; playing: boolean; currentTime: number; duration: number;
   deviceId: string; endedSerial: number; error?: string;
   nextTrackId?: string; boundarySerial?: number;
+  // 只增不改：P5 依赖这些字段如实显示实际输出格式。
+  outputSampleRate?: number;
+  outputBits?: number; outputValidBits?: number; outputIsFloat?: boolean;
+  shareMode?: "shared" | "exclusive"; bitPerfect?: boolean;
+}
+
+/** 当前实际生效的输出格式（如实反映协商结果，不美化）。 */
+export interface AudioOutputFormat {
+  sampleRate: number; bits: number; validBits: number; isFloat: boolean;
+  shareMode: "shared" | "exclusive"; bitPerfect: boolean;
 }
 
 export interface MusicPlayerState {
@@ -42,6 +57,8 @@ export interface MusicPlayerState {
   nativeAvailable: boolean;
   outputError: string | null;
   transitionWarning: string | null;
+  outputFormat: AudioOutputFormat | null;
+  bitPerfect: boolean;
 }
 
 type Listener = (state: MusicPlayerState) => void;
@@ -126,6 +143,8 @@ export class MusicPlayer {
       decoderAvailable: false,
       nativeAvailable: false,
       outputError: null,
+      outputFormat: null,
+      bitPerfect: false,
       transitionWarning: null,
     };
     this.bgm = new Audio("/audio/atmosphere.ogg");
@@ -158,6 +177,7 @@ export class MusicPlayer {
       this.value.nativeAvailable = capabilities.nativeAvailable;
       this.value.outputDevices = capabilities.devices;
       this.value.outputError = capabilities.nativeError ?? capabilities.decoderError ?? null;
+      if (capabilities.nativeFormat) this.value.outputFormat = capabilities.nativeFormat;
       this.emit();
     }
     return capabilities;
@@ -169,7 +189,13 @@ export class MusicPlayer {
     if (backend === "coreaudio") {
       const capabilities = await this.refreshOutputs();
       if (outputRequest !== this.outputOperation || this.disposed) return;
-      if (!capabilities.nativeAvailable) throw new Error(capabilities.nativeError || "CoreAudio 输出不可用，请检查 FFmpeg 和 Apple Command Line Tools");
+      if (!capabilities.nativeAvailable)
+        throw new Error(
+          capabilities.nativeError ||
+            (windowsDesktop()
+              ? "WASAPI 输出不可用，请检查 FFmpeg 与音频设备"
+              : "CoreAudio 输出不可用，请检查 FFmpeg 和 Apple Command Line Tools"),
+        );
     }
     if (this.value.backend === "coreaudio") await this.cancelNativeNext();
     if (outputRequest !== this.outputOperation || this.disposed) return;
@@ -221,6 +247,7 @@ export class MusicPlayer {
       if (outputRequest !== this.outputOperation || this.disposed) return;
       this.adoptNativePosition(state);
       this.value.outputDeviceId = state.deviceId;
+      this.applyNativeFormat(state);
       this.value.outputError = null;
       this.emit();
       this.prepareSuccessor();
@@ -491,8 +518,31 @@ export class MusicPlayer {
     void this.reconcileBgm();
   }
 
+  /** bit-perfect 下应用内音量锁定 100%：软件衰减就是重写样本，与 bit-perfect 天然互斥。 */
+  setBitPerfect(enabled: boolean): void {
+    if (this.disposed) return;
+    this.value.bitPerfect = enabled;
+    if (enabled && this.value.volume !== 1) this.setVolume(1);
+    if (this.value.backend === "coreaudio")
+      void this.nativeCommand({ action: "bitPerfect", enabled }).catch((error) => { this.value.outputError = error.message; this.emit(); });
+    this.emit();
+  }
+
+  private applyNativeFormat(state: NativeState): void {
+    if (state.outputBits === undefined) return;
+    this.value.outputFormat = {
+      sampleRate: state.outputSampleRate ?? this.value.outputFormat?.sampleRate ?? 0,
+      bits: state.outputBits,
+      validBits: state.outputValidBits ?? state.outputBits,
+      isFloat: state.outputIsFloat === true,
+      shareMode: state.shareMode ?? "shared",
+      bitPerfect: state.bitPerfect === true,
+    };
+  }
+
   setVolume(volume: number): void {
     if (this.disposed || !Number.isFinite(volume)) return;
+    if (this.value.bitPerfect) volume = 1;
     this.value.volume = unit(volume);
     this.gapless?.volume(this.value.volume);
     if (this.value.backend === "coreaudio") void this.nativeCommand({ action: "volume", volume: this.value.volume }).catch((error) => { this.value.outputError = error.message; this.emit(); });
@@ -931,7 +981,7 @@ export class MusicPlayer {
   private async nativeCommand(command: Record<string, unknown>, keepalive = false): Promise<NativeState> {
     const response = await fetch("/api/output/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(command), keepalive });
     const result = await response.json() as NativeState & { error?: string };
-    if (!response.ok) throw new Error(result.error || "CoreAudio 输出失败");
+    if (!response.ok) throw new Error(result.error || (windowsDesktop() ? "WASAPI 输出失败" : "CoreAudio 输出失败"));
     return result;
   }
 
@@ -950,13 +1000,14 @@ export class MusicPlayer {
       const state = await this.nativeCommand({ action: "play", trackId: track.id, deviceId: this.value.outputDeviceId, volume: this.value.volume, transitionMode: this.value.songTransitionMode });
       if (request !== this.operation || this.disposed) return;
       this.nativeEndedSerial = state.endedSerial;
+      this.applyNativeFormat(state);
       this.value.duration = state.duration; this.value.currentTime = state.currentTime;
       this.value.playing = state.playing; this.value.loading = false;
       this.transport = state.playing ? "playing" : "paused";
       this.emit(); this.startNativePoll();
       if (this.pendingSeek !== null) { const position = this.pendingSeek; this.pendingSeek = null; this.seek(position); }
       else this.prepareSuccessor();
-    } catch (error) { if (request === this.operation && !this.disposed) this.fail(error instanceof Error ? error.message : "CoreAudio 播放失败"); }
+    } catch (error) { if (request === this.operation && !this.disposed) this.fail(error instanceof Error ? error.message : (windowsDesktop() ? "WASAPI 播放失败" : "CoreAudio 播放失败")); }
   }
 
   private startNativePoll(): void {
@@ -968,17 +1019,18 @@ export class MusicPlayer {
       try {
         const response = await fetch("/api/output/state");
         const state = await response.json() as NativeState & { error?: string };
-        if (!response.ok) throw new Error(state.error || "无法读取 CoreAudio 状态");
+        if (!response.ok) throw new Error(state.error || (windowsDesktop() ? "无法读取 WASAPI 状态" : "无法读取 CoreAudio 状态"));
         if (this.disposed || this.value.backend !== "coreaudio" || epoch !== this.nativePollEpoch) return;
         if (request === this.operation && this.transport === "playing" && state.trackId !== this.value.currentTrack?.id) {
           const index = this.value.queue.findIndex(track => track.id === state.trackId);
           if ((state.trackId === this.nativePreparedId || state.trackId === this.nativeHandoffId) && index >= 0) {
             this.value.currentTrack = this.value.queue[index]; this.value.currentIndex = index;
             if (state.playing) this.prepareSuccessor();
-          } else throw new Error("CoreAudio 播放进程已重启或状态已改变，请重新播放");
+          } else throw new Error(windowsDesktop() ? "WASAPI 播放进程已重启或状态已改变，请重新播放" : "CoreAudio 播放进程已重启或状态已改变，请重新播放");
         }
         if (request === this.operation && state.trackId === this.value.currentTrack?.id && this.transport !== "loading") {
           if (state.error) throw new Error(state.error);
+          this.applyNativeFormat(state);
           this.value.currentTime = state.currentTime; this.value.duration = state.duration;
           this.value.playing = state.playing;
           if (state.endedSerial !== this.nativeEndedSerial && this.transport === "playing") {
@@ -993,7 +1045,7 @@ export class MusicPlayer {
           this.emit();
         }
       } catch (error) {
-        if (!this.disposed && request === this.operation && this.value.backend === "coreaudio" && this.expectsSong()) this.fail(error instanceof Error ? error.message : "CoreAudio 连接已断开");
+        if (!this.disposed && request === this.operation && this.value.backend === "coreaudio" && this.expectsSong()) this.fail(error instanceof Error ? error.message : (windowsDesktop() ? "WASAPI 连接已断开" : "CoreAudio 连接已断开"));
       }
       if (!this.disposed && this.value.backend === "coreaudio" && epoch === this.nativePollEpoch) this.nativePoll = setTimeout(poll, 200);
     };

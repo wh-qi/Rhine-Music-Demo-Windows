@@ -45,6 +45,20 @@ V0.4.0 音频解码通过独立子进程调用用户本机安装的 FFmpeg / ffp
 
 APE 回归仅在本机临时目录使用 [FFmpeg 官方音频样本](https://samples.ffmpeg.org/A-codecs/lossless/)中的 `luckynight.ape`；它是官方说明所述的一分钟 CD 节选测试样本，来源标注不代表授予音乐再分发许可。文件没有复制进项目，也不进入任何源码包。其他新增音频测试使用现场生成的短正弦波，不使用用户私人曲库。路线与验证详见 [AUDIO-V0.4.0.md](docs/AUDIO-V0.4.0.md)。
 
+## Windows 桌面版（社区衍生）
+
+Windows 版是独立 Fork，不改变上游 Git 历史，也不属于 V0.4.1 主线支持范围。除上游依赖外，随包新增以下第三方组件：
+
+| 组件 | 权利人与许可 | 随包文本与说明 |
+| --- | --- | --- |
+| Electron | OpenJS Foundation 及 Electron 贡献者，MIT | 提供固定的 Chromium 渲染环境与桌面外壳；许可文本由 Electron 自身随包放在安装目录 |
+| FFmpeg（LGPL 构建） | FFmpeg 项目，LGPL-3.0-or-later | 由 [ffmpeg/fetch-ffmpeg.mjs](ffmpeg/fetch-ffmpeg.mjs) 取得 [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) 的 `ffmpeg-n8.1-latest-win64-lgpl-8.1` 产物，该构建含 `--disable-gpl --disable-nonfree`。以独立可执行文件通过子进程调用，**不作为链接库**，因此不影响本项目代码的 MIT 许可。随包文本 `resources/unpacked/ffmpeg/LICENSE.txt`；源码获取方式见 [ffmpeg/README.md](ffmpeg/README.md) |
+| RhineWinService | 本项目新增，随项目代码许可（MIT） | C# / .NET 8 原生音频服务，源码见 [native/rhine-win-service](native/rhine-win-service) |
+| .NET 运行时 | .NET Foundation 及贡献者，MIT | 仅在自包含发布的 `rhine-win-service.exe` 内，随包分发 |
+| Windows SDK 投影 | Microsoft，MIT | 仅用于调用系统 SystemMediaTransportControls；由 `net8.0-windows10.0.19041.0` 目标框架在还原阶段取得，不再单独分发 |
+
+Windows 版不捆绑任何歌曲、封面或曲库索引。回归用样本由 [scripts/make-audio-fixtures.mjs](scripts/make-audio-fixtures.mjs) 现场生成的正弦波构成；APE 仍只在本机临时目录引用上游 FFmpeg 官方样本 `luckynight.ape`，不复制进仓库，也不进入任何源码包或安装包。
+
 ## 在线资料
 
 Wikipedia 摘要、Wikidata 与 MusicBrainz 数据按其来源许可处理。客户端保存介绍时同时保存来源链接、取得时间和许可说明；此类用户自行查询的缓存不纳入项目 MIT 授权，也不进入发布包。MusicBrainz 将核心数据和补充数据分别授权，详见[官方数据许可](https://musicbrainz.org/doc/About/Data_License)；不能仅因为程序开源就统一将数据改授 MIT。
