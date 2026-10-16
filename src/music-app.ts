@@ -2397,11 +2397,11 @@ function frame(ms: number) {
       // Keep read-only render diagnostics alongside the existing resolution
       // attributes, without adding controls or per-frame DOM work.
       if (!viewer?.isOpen) {
-        const { drawCalls, triangles, selectionLight, arrayMode, visibleAlbumCells, uniqueAlbumCells, covers, graphics } = scene.getStats();
+        const { drawCalls, triangles, selectionLight, arrayMode, visibleAlbumCells, uniqueAlbumCells, covers, graphics, objectBreakdown } = scene.getStats();
         $("#three-scene").dataset.renderStats = JSON.stringify({
           drawCalls,
           triangles,
-          arrayMode, visibleAlbumCells, uniqueAlbumCells, covers, graphics,
+          arrayMode, visibleAlbumCells, uniqueAlbumCells, covers, graphics, objectBreakdown,
         });
         $("#three-scene").dataset.selectionLight =
           JSON.stringify(selectionLight);

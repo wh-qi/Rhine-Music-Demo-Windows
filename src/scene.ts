@@ -2040,7 +2040,28 @@ export class ArchiveScene {
         .project(this.camera);
       return [Math.round((p.x + 1) * this.container.clientWidth / 2), Math.round((1 - p.y) * this.container.clientHeight / 2)];
     };
+    // 按对象统计三角形。曾经靠它验证出：几何量对帧时间没有影响
+    // （706,661 与 3,365 个三角形的帧时间完全相同），所以 LOD 一类的
+    // 几何优化在这台机器上不值得做。保留它以免下次又要重新查一遍。
+    const objects: { name: string; tris: number; visible: boolean }[] = [];
+    this.scene.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      const instanced = mesh as THREE.InstancedMesh;
+      if (!mesh.isMesh && !(object as unknown as THREE.Points).isPoints) return;
+      const geometry = mesh.geometry as THREE.BufferGeometry | undefined;
+      if (!geometry) return;
+      const index = geometry.index;
+      const vertices = index ? index.count : (geometry.attributes.position?.count ?? 0);
+      const instances = instanced.isInstancedMesh ? instanced.count : 1;
+      objects.push({
+        name: object.name || object.type,
+        tris: Math.floor(vertices / 3) * instances,
+        visible: object.visible,
+      });
+    });
+    objects.sort((a, b) => b.tris - a.tris);
     return {
+      objectBreakdown: objects.slice(0, 12),
       covers: this.covers?.getStats(),
       arrayMode: this.musicArrayMode,
       graphics: { geometries: this.renderer.info.memory.geometries,
