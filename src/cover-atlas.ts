@@ -103,6 +103,11 @@ export class CoverAtlas {
   private readonly work: Array<() => void> = [];
   private queueDropped = 0;
   private lastPump = Number.NEGATIVE_INFINITY;
+  // 累计花在「从图集画布抠瓦片 + 上传」上的时间，用来算单个瓦片的真实成本。
+  private uploadMs = 0;
+  // 再拆开：从 28MP 画布抠图（CPU/2D 画布）vs 交给 GPU 拷贝。
+  private extractMs = 0;
+  private copyMs = 0;
   private readonly atlasCanvas = document.createElement("canvas");
   private readonly selectedCanvas = document.createElement("canvas");
   private readonly tileCanvas = document.createElement("canvas");
@@ -478,6 +483,7 @@ export class CoverAtlas {
       try { renderer.initTexture(this.atlas); this.gpuInitialized = true; }
       finally { this.atlas.source.dataReady = true; }
     }
+    const startedAt = performance.now();
     const context = this.uploadCanvas.getContext("2d")!;
     const destination = new THREE.Vector2();
     let uploaded = 0;
@@ -486,10 +492,16 @@ export class CoverAtlas {
       const x = (slot % this.columns) * this.tileWidth;
       const y = Math.floor(slot / this.columns) * this.tileHeight;
       context.clearRect(0, 0, this.tileWidth, this.tileHeight);
+      const extractStart = performance.now();
       context.drawImage(this.atlasCanvas, x, y, this.tileWidth, this.tileHeight, 0, 0, this.tileWidth, this.tileHeight);
+      this.extractMs += performance.now() - extractStart;
       // Canvas rows run downwards; WebGL destination origins run upwards.
       destination.set(x, this.atlasCanvas.height - y - this.tileHeight);
+      // 注意：Three.js r183 的 copyTextureToTexture 每次都做 5 次 gl.getParameter
+      // （同步 GPU 往返），单次约 28ms 且与数据量无关。这里计时是为了留证。
+      const copyStart = performance.now();
       renderer.copyTextureToTexture(this.uploadTexture, this.atlas, null, destination);
+      this.copyMs += performance.now() - copyStart;
       this.dirtySlots.delete(slot);
       this.coverReady.setX(slot, 1);
       this.uploadedBytes += this.tileWidth * this.tileHeight * 4;
@@ -499,6 +511,7 @@ export class CoverAtlas {
       if (deadline !== undefined && performance.now() >= deadline) break;
     }
     if (uploaded) { this.coverReady.needsUpdate = true; this.uploadBatches++; }
+    this.uploadMs += performance.now() - startedAt;
     return uploaded;
   }
 
@@ -526,6 +539,7 @@ export class CoverAtlas {
       uploadedBytes: this.uploadedBytes, uploadBatches: this.uploadBatches,
       gpuInitialized: this.gpuInitialized,
       paintQueue: this.work.length, queueDropped: this.queueDropped, atlasBudgetMs: this.paintBudget(),
+      uploadMs: Math.round(this.uploadMs), extractMs: Math.round(this.extractMs), copyMs: Math.round(this.copyMs),
     };
   }
 

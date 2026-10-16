@@ -1920,23 +1920,33 @@ export class ArchiveScene {
   async prepareMusicRenderer() {
     if (!musicLibrary || !this.loaded || this.disposed) return;
     const started = performance.now();
+    // 分段计时：把这段准备时间拆开，便于判断该优化哪一块。
+    const phases: Record<string, number> = {};
+    let lapAt = started;
+    const lap = (name: string) => { const now = performance.now(); phases[name] = Math.round(now - lapAt); lapAt = now; };
     const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     // The settled shot exercises both the instanced shelf and selected shell.
     const settled = { reveal: 1, lift: 0, zoom: 0, time: 27.12, musicIntro: true };
     this.update(started / 1000, settled, false);
+    lap("firstUpdate");
     const visible = this.model.visible;
     this.model.visible = true;
     await this.renderer.compileAsync(this.scene, this.camera);
+    lap("compile");
     this.model.visible = visible;
     if (this.disposed) return;
     await this.covers?.prepareVisible(1200);
+    lap("prepareVisible");
     // Bound initialization work as well: at most 16 MiB of tiles per turn.
     // Normal animation uses the smaller 2 MiB / frame budget.
+    let drainRounds = 0;
     for (let i = 0; i < 12 && this.covers && this.covers.getStats().dirtyTiles; i++) {
       if (this.disposed) return;
       this.covers.pump(this.renderer, 12, 64);
+      drainRounds += 1;
       await nextFrame();
     }
+    lap("drainTiles");
     // Real draws initialize transmission, shadow, AO and depth-of-field targets.
     // They cannot be warmed by compiling the main scene's materials alone.
     for (let i = 0; i < 2; i++) {
@@ -1944,10 +1954,15 @@ export class ArchiveScene {
       this.update(performance.now() / 1000, settled);
       await nextFrame();
     }
+    lap("warmDraws");
     if (this.disposed) return;
     this.setMode("hidden");
     this.container.dataset.startupPreparation = JSON.stringify({
       milliseconds: Math.round(performance.now() - started),
+      // 页面开始到本段准备启动之间的耗时，用来判断准备阶段之外还花了多少。
+      sinceNavigationStart: Math.round(started),
+      phases,
+      drainRounds,
       parallelCompile: this.renderer.extensions.has("KHR_parallel_shader_compile"),
       glError: this.renderer.getContext().getError(),
       covers: this.covers?.getStats(),
