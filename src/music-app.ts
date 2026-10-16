@@ -1740,6 +1740,15 @@ function renderSettingsPanel() {
       <button class="text-button" data-action="lighting-debug" ${preferences.developerMode ? "" : "hidden"}>打开光效调试面板 ↗</button>
       <button class="text-button" data-action="motion-debug" ${preferences.motionDebug ? "" : "hidden"}>打开动画速度调试面板 ↗</button>
       <button class="text-button" data-action="copy-performance">复制性能诊断 ↗</button>
+    </section>
+    <section class="panel-section" id="performance-monitor">
+      <h3>实时性能</h3>
+      <label class="settings-row"><span>帧率<small id="perf-fps-note">最近 240 帧</small></span><span id="perf-fps">—</span></label>
+      <label class="settings-row"><span>帧时间<small>p50 / p95 / 最大</small></span><span id="perf-frame">—</span></label>
+      <label class="settings-row"><span>长帧<small>超过 50 ms 的帧</small></span><span id="perf-over">—</span></label>
+      <label class="settings-row"><span>CPU<small>每帧回调内的 JS 提交耗时</small></span><span id="perf-cpu">—</span></label>
+      <label class="settings-row"><span>渲染<small id="perf-render-note">—</small></span><span id="perf-render">—</span></label>
+      <p>只在设置面板打开时采样，收起后停止，不产生开销。CPU 是提交耗时，不等于 GPU 耗时。</p>
     </section>`);
   renderMusicBrainzSettings();
   updateQuality();
@@ -2387,6 +2396,7 @@ function frame(ms: number) {
           JSON.stringify(selectionLight);
       }
       $("#three-scene").dataset.frameTiming = JSON.stringify(frameTiming.snapshot());
+      updatePerformancePanel(ms);
       frameCount = 0;
       lastFrame = ms;
     }
@@ -2395,6 +2405,33 @@ function frame(ms: number) {
     resetFrameTiming();
   }
   frameHandle = requestAnimationFrame(frame);
+}
+let performanceSampledAt = 0;
+/** 实时性能面板：只在可见时每 0.5 秒读一次快照，收起后完全不采样。 */
+function updatePerformancePanel(now: number) {
+  if (now - performanceSampledAt < 500) return;
+  const fps = document.querySelector<HTMLElement>("#perf-fps");
+  if (!fps || fps.getClientRects().length === 0) return;
+  performanceSampledAt = now;
+  const snap = frameTiming.snapshot();
+  // 渲染尺寸与图集统计由 ArchiveScene 写在 #three-scene 上，不是 #stage。
+  const host = document.querySelector<HTMLElement>("#three-scene");
+  const quality = JSON.parse(host?.dataset.renderQuality || "null") as
+    { width: number; height: number; ratio: number; limited?: boolean } | null;
+  const stats = JSON.parse(host?.dataset.renderStats || "null") as
+    { covers?: { dirtyTiles?: number } } | null;
+  fps.textContent = `${snap.fps.toFixed(0)} fps`;
+  document.querySelector<HTMLElement>("#perf-fps-note")!.textContent = `最近 ${snap.samples} 帧`;
+  document.querySelector<HTMLElement>("#perf-frame")!.textContent =
+    `${snap.frameP50.toFixed(1)} / ${snap.frameP95.toFixed(1)} / ${snap.frameMax.toFixed(1)} ms`;
+  document.querySelector<HTMLElement>("#perf-over")!.textContent = `${snap.over50ms} 个`;
+  document.querySelector<HTMLElement>("#perf-cpu")!.textContent = `${snap.cpuP95.toFixed(1)} ms`;
+  document.querySelector<HTMLElement>("#perf-render")!.textContent =
+    quality ? `${quality.width}×${quality.height}` : "—";
+  const covers = stats?.covers;
+  document.querySelector<HTMLElement>("#perf-render-note")!.textContent = quality
+    ? `比例 ${quality.ratio}${quality.limited ? " · 受上限限制" : ""}${covers ? ` · 图集待传 ${covers.dirtyTiles ?? 0}` : ""}`
+    : "—";
 }
 function resetFrameTiming() {
   frameCount = 0;

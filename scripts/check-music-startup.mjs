@@ -69,6 +69,8 @@ function fixture({ renderScene = true, firstMs = 0, reduced = false, speed = 1, 
     const updateOverview = () => {}, overviewRevealPending = false, overview = false;
     const overviewUI = { dispose: () => calls.dispose.overview++ };
     const showBrowseSurface = () => {}, documentDecryption = { update: time => calls.decryption.push(time) };
+    // 实时性能面板要查 DOM；这里和 updateOverview 一样按边界打桩。
+    const updatePerformancePanel = () => {};
     const pendingDetailFocus = false, pendingTrackReveal = undefined, panel = undefined;
     const pollTimer = 17, toastTimer = 18, clearTimeout = id => calls.clearTimeout.push(id);
     const loadLibrary = () => { calls.library++; };
