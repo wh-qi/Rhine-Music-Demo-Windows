@@ -4,7 +4,7 @@
 >
 > | 我想… | 去哪 |
 > | --- | --- |
-> | **下载安装** | [Releases](../../releases) —— 安装版 / 便携版，**不需要预装任何东西** |
+> | **下载安装** | [Releases](../../releases) —— 安装版 / 绿色版，**不需要预装任何东西** |
 > | **了解怎么用** | [WINDOWS.md](WINDOWS.md) |
 > | **从源码构建** | [docs/WINDOWS-PORT.md §8](docs/WINDOWS-PORT.md) |
 > | **看与上游的差异** | [docs/WINDOWS-PORT.md §6](docs/WINDOWS-PORT.md) |
