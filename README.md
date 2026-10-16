@@ -1,3 +1,20 @@
+> # 🪟 本仓库是 Windows 桌面版
+>
+> [Rhine Music Demo](https://github.com/RonaldDeng/Rhine-Music-Demo) V0.4.1 的**社区衍生独立分支**，把 macOS 主线搬到 Windows 桌面，保留其全部视觉与交互。它不属于 V0.4.1 主线支持范围，也不改变上游 Git 历史。
+>
+> | 我想… | 去哪 |
+> | --- | --- |
+> | **下载安装** | [Releases](../../releases) —— 安装版 / 便携版，**不需要预装任何东西** |
+> | **了解怎么用** | [WINDOWS.md](WINDOWS.md) |
+> | **从源码构建** | [docs/WINDOWS-PORT.md §8](docs/WINDOWS-PORT.md) |
+> | **看与上游的差异** | [docs/WINDOWS-PORT.md §6](docs/WINDOWS-PORT.md) |
+> | **确认许可与署名** | [NOTICE.md](NOTICE.md) |
+> | **报问题** | [Issues](../../issues) |
+>
+> 上游 macOS 主线的原文说明保留在 [README.original.md](README.original.md)；下方内容为上游原说明，未作改动。
+
+---
+
 # Rhine Music Demo · V0.4.1
 
 **把本地音乐放进三维专辑架，一张一张，慢慢听。** 用玻璃 CD 盒浏览收藏，打开专辑、查找歌曲，在浏览器界面中播放自己的音乐。
