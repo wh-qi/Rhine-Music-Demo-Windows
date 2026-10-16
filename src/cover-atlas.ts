@@ -105,6 +105,8 @@ export class CoverAtlas {
   private lastPump = Number.NEGATIVE_INFINITY;
   // 累计花在「从图集画布抠瓦片 + 上传」上的时间，用来算单个瓦片的真实成本。
   private uploadMs = 0;
+  private directUploads = 0;
+  private fallbackUploads = 0;
   // 再拆开：从 28MP 画布抠图（CPU/2D 画布）vs 交给 GPU 拷贝。
   private extractMs = 0;
   private copyMs = 0;
@@ -380,12 +382,68 @@ export class CoverAtlas {
     this.work.push(job);
   }
 
+  /** <html data-atlas-direct-upload="0"> 可强制走 Three.js 原路径，便于出问题时二分定位。
+   *  校验宿主在 Node 里跑，没有 document。 */
+  private legacyUpload(): boolean {
+    const root = typeof document === "undefined" ? undefined : document.documentElement;
+    return root?.dataset.atlasDirectUpload === "0";
+  }
+
   /** 允许用 <html data-atlas-budget="…"> 在运行时调预算，便于测量，不改变默认值。 */
   private paintBudget(): number {
     // 校验宿主在 Node 里跑，没有 document。
     const root = typeof document === "undefined" ? undefined : document.documentElement;
     const raw = Number(root?.dataset.atlasBudget);
     return Number.isFinite(raw) && raw >= 0 ? raw : COVER_ATLAS_BUDGET_MS;
+  }
+
+  /**
+   * 把一个瓦片从 uploadCanvas 直接传进图集的指定位置。
+   *
+   * 底层就是 Three.js 的 copyTextureToTexture 在 CPU 分支里做的那一句
+   * texSubImage2D（three.module.js:19170），这里只是把它外面那圈包装去掉：
+   * 那边每次调用要做 5 次 gl.getParameter（同步 GPU 往返，实测约 28ms）
+   * 加 13 次 pixelStorei 和一次格式转换。参数完全对齐，结果应逐像素一致。
+   */
+  private uploadTileDirect(renderer: THREE.WebGLRenderer, x: number, y: number): boolean {
+    // 直传依赖 Three.js 的内部字段。任何一项对不上就交回 copyTextureToTexture，
+    // 回退次数会记进 fallbackUploads，不会被静默吞掉。
+    if (typeof renderer?.getContext !== "function") return false;
+    if (typeof renderer.properties?.get !== "function") return false;
+    if (typeof renderer.state?.bindTexture !== "function") return false;
+    // 直传写死了 RGBA/UNSIGNED_BYTE；图集不是这个组合时交回 Three 处理。
+    if (this.atlas.format !== THREE.RGBAFormat || this.atlas.type !== THREE.UnsignedByteType) return false;
+    // Three.js r183 只支持 WebGL2，这里的 UNPACK_* 常量和画布源的 texSubImage2D
+    // 重载都是 WebGL2 专有，联合类型上看不到，所以明确收窄。
+    const gl = renderer.getContext() as WebGL2RenderingContext;
+    const stored = renderer.properties.get(this.atlas) as { __webglTexture?: WebGLTexture } | undefined;
+    const target = stored?.__webglTexture;
+    if (!target) return false;
+    // 用 Three 自己的 state 绑定，避免与它的 GL 状态缓存不同步。槽位取 0：
+    // 本方法在 composer.render() 之前调用，没有绘制在飞行中。
+    renderer.state.bindTexture(gl.TEXTURE_2D, target, gl.TEXTURE0);
+    // 这三个必须和 Three.js 从 dstTexture 取值的方式完全一致
+    // （three.module.js:19038-19040）。图集是 CanvasTexture，flipY 默认为 true；
+    // 目标行的翻转已经由调用方算好，两者配合才正立。设错方向会让每个瓦片上下颠倒。
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, this.atlas.flipY ? 1 : 0);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, this.atlas.premultiplyAlpha ? 1 : 0);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, this.atlas.unpackAlignment);
+    // Three 的 uploadTexture 不会设置这五个；留下上一个调用方的值会读错行。
+    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+    gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, 0);
+    gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 0);
+    gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+    gl.pixelStorei(gl.UNPACK_SKIP_IMAGES, 0);
+    try {
+      gl.texSubImage2D(
+        gl.TEXTURE_2D, 0, x, y, this.tileWidth, this.tileHeight,
+        gl.RGBA, gl.UNSIGNED_BYTE, this.uploadCanvas,
+      );
+    } catch {
+      // 上下文丢失等情况交回 Three，由它的路径去暴露问题。
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -487,6 +545,7 @@ export class CoverAtlas {
     const context = this.uploadCanvas.getContext("2d")!;
     const destination = new THREE.Vector2();
     let uploaded = 0;
+    const legacy = this.legacyUpload();
     const limit = Math.max(1, Math.min(64, Math.floor(maxTiles) || 8));
     for (const slot of this.dirtySlots) {
       const x = (slot % this.columns) * this.tileWidth;
@@ -497,10 +556,16 @@ export class CoverAtlas {
       this.extractMs += performance.now() - extractStart;
       // Canvas rows run downwards; WebGL destination origins run upwards.
       destination.set(x, this.atlasCanvas.height - y - this.tileHeight);
-      // 注意：Three.js r183 的 copyTextureToTexture 每次都做 5 次 gl.getParameter
-      // （同步 GPU 往返），单次约 28ms 且与数据量无关。这里计时是为了留证。
       const copyStart = performance.now();
-      renderer.copyTextureToTexture(this.uploadTexture, this.atlas, null, destination);
+      // 默认走直传：Three.js r183 的 copyTextureToTexture 每次要做 5 次
+      // gl.getParameter（同步 GPU 往返），实测单瓦片 22-26ms，而底下那句
+      // texSubImage2D 本身只要 0.02ms。取不到内部纹理或格式不符时自动回退。
+      if (!legacy && this.uploadTileDirect(renderer, x, destination.y)) {
+        this.directUploads += 1;
+      } else {
+        renderer.copyTextureToTexture(this.uploadTexture, this.atlas, null, destination);
+        this.fallbackUploads += 1;
+      }
       this.copyMs += performance.now() - copyStart;
       this.dirtySlots.delete(slot);
       this.coverReady.setX(slot, 1);
@@ -540,6 +605,7 @@ export class CoverAtlas {
       gpuInitialized: this.gpuInitialized,
       paintQueue: this.work.length, queueDropped: this.queueDropped, atlasBudgetMs: this.paintBudget(),
       uploadMs: Math.round(this.uploadMs), extractMs: Math.round(this.extractMs), copyMs: Math.round(this.copyMs),
+      directUploads: this.directUploads, fallbackUploads: this.fallbackUploads,
     };
   }
 
