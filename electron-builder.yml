@@ -47,10 +47,12 @@ extraResources:
 win:
   # 直接复用仓库里已有的 Rhine Lab 图标，不新增美术资源
   icon: public/icons/icon-512.png
+  # 只打安装版。electron-builder 的 portable（NSIS 自解压）在本应用上不可用：
+  # SFX 会正常解压、退出码为 0，但从不解压出的应用——实测在磁盘充足、副本校验一致、
+  # 无杀软拦截的机器上仍然如此（Defender 无 ASR 规则、无拦截事件）。
+  # 绿色版改为把 win-unpacked 目录整体打包成 zip 提供，步骤见 WINDOWS.md。
   target:
     - target: nsis
-      arch: [x64]
-    - target: portable
       arch: [x64]
 
 nsis:
@@ -63,5 +65,3 @@ nsis:
   shortcutName: Rhine Music
   deleteAppDataOnUninstall: false
 
-portable:
-  artifactName: ${productName}-${version}-portable.${ext}

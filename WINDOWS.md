@@ -7,8 +7,12 @@ Rhine Music for Windows 是 [Rhine Music Demo](https://github.com/RonaldDeng/Rhi
 
 | 方式 | 文件 | 说明 |
 | --- | --- | --- |
-| 安装版 | `Rhine Music-<版本>-win-setup.exe` | 可选安装目录，创建桌面与开始菜单快捷方式 |
-| 便携版 | `Rhine Music-<版本>-portable.exe` | 免安装，双击即用 |
+| 安装版 | `Rhine Music-<版本>-win-setup.exe` | 可选安装目录，创建桌面与开始菜单快捷方式，可从「应用和功能」卸载 |
+| 绿色版 | `Rhine Music-<版本>-win-green.zip` | 解压到任意目录（含 U 盘），双击 `Rhine Music\Rhine Music.exe` 即用，不写注册表 |
+
+> 早期版本曾提供 NSIS 自解压「便携版 exe」。该形态在本应用上不可用——自解压程序会正常解压、
+> 退出码为 0，却从不启动解压出的应用（已在磁盘充足、副本校验一致、无杀软拦截的机器上复现）。
+> 因此改为绿色版 zip。
 
 **不需要预先安装任何东西。** 渲染引擎（固定版本 Chromium）、音频解码（FFmpeg）与原生音频服务（自包含 .NET）
 都已随包分发。
