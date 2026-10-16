@@ -57,6 +57,7 @@ import { MusicFrameTiming } from "./music-frame-timing";
 import { searchMusicLibrary } from "./music-search";
 import { viewportLayout } from "./viewport-layout";
 import { setupLightingLab } from "./music-lighting-lab";
+import { setupPerformanceLab } from "./music-performance-lab";
 import type { LightingLabController, LightingLabSettings } from "./music-lighting-lab";
 import { setupMotionLab } from "./music-motion-lab";
 import { getMusicMotionSpeed, normalizeMusicMotionSpeed, onMusicMotionSpeedChange, setMusicMotionSpeed } from "./music-motion-settings";
@@ -67,6 +68,7 @@ const lightingDemo = new URLSearchParams(location.search).get("demo") === "1";
 const lightingLab = new URLSearchParams(location.search).get("lab") !== "0";
 let lightingControls: LightingLabController | undefined;
 let motionControls: ReturnType<typeof setupMotionLab> | undefined;
+let performanceControls: ReturnType<typeof setupPerformanceLab> | undefined;
 
 type Theme = "day" | "night";
 type Panel = "library" | "search" | "settings" | null;
@@ -120,6 +122,7 @@ const preferences = {
     renderQuality: undefined as RenderQuality | undefined,
     developerMode: false,
     motionDebug: false,
+    performanceDebug: false,
     motionSpeed: 1,
     lighting: undefined as Partial<LightingLabSettings> | undefined,
   },
@@ -144,6 +147,7 @@ const preferences = {
       renderQuality: RenderQuality;
       developerMode: boolean;
       motionDebug: boolean;
+    performanceDebug: boolean;
       motionSpeed: number;
       lighting: Partial<LightingLabSettings>;
     }>
@@ -164,6 +168,7 @@ if (!["genre", "artist", "album"].includes(preferences.sortMode))
   preferences.sortMode = "genre";
 preferences.developerMode = preferences.developerMode === true;
 preferences.motionDebug = preferences.motionDebug === true;
+preferences.performanceDebug = preferences.performanceDebug === true;
 preferences.arrayMode = normalizeMusicArrayMode(preferences.arrayMode);
 preferences.rememberColumnPosition = preferences.rememberColumnPosition !== false;
 preferences.audioBackend = preferences.audioBackend === "coreaudio" ? "coreaudio" : "browser";
@@ -1739,16 +1744,9 @@ function renderSettingsPanel() {
       <p>两个面板可以同时打开。调节即时生效、自动保存在本机，无需刷新；收起或关闭面板仍保留效果。</p>
       <button class="text-button" data-action="lighting-debug" ${preferences.developerMode ? "" : "hidden"}>打开光效调试面板 ↗</button>
       <button class="text-button" data-action="motion-debug" ${preferences.motionDebug ? "" : "hidden"}>打开动画速度调试面板 ↗</button>
+      <label class="settings-row"><span>性能调试面板<small>实时帧率与帧时间，浮在界面上，滚动时也能看</small></span><input type="checkbox" id="developer-performance" aria-label="性能调试面板" ${preferences.performanceDebug ? "checked" : ""}></label>
       <button class="text-button" data-action="copy-performance">复制性能诊断 ↗</button>
-    </section>
-    <section class="panel-section" id="performance-monitor">
-      <h3>实时性能</h3>
-      <label class="settings-row"><span>帧率<small id="perf-fps-note">最近 240 帧</small></span><span id="perf-fps">—</span></label>
-      <label class="settings-row"><span>帧时间<small>p50 / p95 / 最大</small></span><span id="perf-frame">—</span></label>
-      <label class="settings-row"><span>长帧<small>超过 50 ms 的帧</small></span><span id="perf-over">—</span></label>
-      <label class="settings-row"><span>CPU<small>每帧回调内的 JS 提交耗时</small></span><span id="perf-cpu">—</span></label>
-      <label class="settings-row"><span>渲染<small id="perf-render-note">—</small></span><span id="perf-render">—</span></label>
-      <p>只在设置面板打开时采样，收起后停止，不产生开销。CPU 是提交耗时，不等于 GPU 耗时。</p>
+      <button class="text-button" data-action="performance-debug" ${preferences.performanceDebug ? "" : "hidden"}>打开性能调试面板 ↗</button>
     </section>`);
   renderMusicBrainzSettings();
   updateQuality();
@@ -1987,6 +1985,12 @@ document.addEventListener("click", (e) => {
         motionControls?.focus();
       });
       break;
+    case "performance-debug":
+      closePanel(() => {
+        setMode("archive");
+        performanceControls?.focus();
+      });
+      break;
     case "locate-playing": {
       const track = playerState.currentTrack;
       if (track) revealAlbum(track.albumId, track.id, { reuseOpenAlbum: true });
@@ -2165,6 +2169,13 @@ document.addEventListener("change", (e) => {
     preferences.motionDebug = el.checked;
     motionControls?.setEnabled(el.checked);
     const debugButton = document.querySelector<HTMLElement>('[data-action="motion-debug"]');
+    if (debugButton) debugButton.hidden = !el.checked;
+    savePrefs();
+  }
+  if (el.id === "developer-performance") {
+    preferences.performanceDebug = el.checked;
+    performanceControls?.setEnabled(el.checked);
+    const debugButton = document.querySelector<HTMLElement>('[data-action="performance-debug"]');
     if (debugButton) debugButton.hidden = !el.checked;
     savePrefs();
   }
@@ -2407,11 +2418,10 @@ function frame(ms: number) {
   frameHandle = requestAnimationFrame(frame);
 }
 let performanceSampledAt = 0;
-/** 实时性能面板：只在可见时每 0.5 秒读一次快照，收起后完全不采样。 */
+/** 把帧快照喂给性能面板；面板没打开时连快照都不取。 */
 function updatePerformancePanel(now: number) {
   if (now - performanceSampledAt < 500) return;
-  const fps = document.querySelector<HTMLElement>("#perf-fps");
-  if (!fps || fps.getClientRects().length === 0) return;
+  if (!performanceControls?.visible) return;
   performanceSampledAt = now;
   const snap = frameTiming.snapshot();
   // 渲染尺寸与图集统计由 ArchiveScene 写在 #three-scene 上，不是 #stage。
@@ -2420,18 +2430,15 @@ function updatePerformancePanel(now: number) {
     { width: number; height: number; ratio: number; limited?: boolean } | null;
   const stats = JSON.parse(host?.dataset.renderStats || "null") as
     { covers?: { dirtyTiles?: number } } | null;
-  fps.textContent = `${snap.fps.toFixed(0)} fps`;
-  document.querySelector<HTMLElement>("#perf-fps-note")!.textContent = `最近 ${snap.samples} 帧`;
-  document.querySelector<HTMLElement>("#perf-frame")!.textContent =
-    `${snap.frameP50.toFixed(1)} / ${snap.frameP95.toFixed(1)} / ${snap.frameMax.toFixed(1)} ms`;
-  document.querySelector<HTMLElement>("#perf-over")!.textContent = `${snap.over50ms} 个`;
-  document.querySelector<HTMLElement>("#perf-cpu")!.textContent = `${snap.cpuP95.toFixed(1)} ms`;
-  document.querySelector<HTMLElement>("#perf-render")!.textContent =
-    quality ? `${quality.width}×${quality.height}` : "—";
   const covers = stats?.covers;
-  document.querySelector<HTMLElement>("#perf-render-note")!.textContent = quality
-    ? `比例 ${quality.ratio}${quality.limited ? " · 受上限限制" : ""}${covers ? ` · 图集待传 ${covers.dirtyTiles ?? 0}` : ""}`
-    : "—";
+  performanceControls.update({
+    fps: snap.fps, p50: snap.frameP50, p95: snap.frameP95, max: snap.frameMax,
+    over50: snap.over50ms, samples: snap.samples, cpuP95: snap.cpuP95,
+    render: quality ? `${quality.width}×${quality.height}` : "—",
+    note: quality
+      ? `比例 ${quality.ratio}${quality.limited ? " · 受上限限制" : ""}${covers ? ` · 图集待传 ${covers.dirtyTiles ?? 0}` : ""}。CPU 是提交耗时，不等于 GPU 耗时。`
+      : "CPU 是提交耗时，不等于 GPU 耗时。",
+  });
 }
 function resetFrameTiming() {
   frameCount = 0;
@@ -2493,7 +2500,7 @@ async function start() {
       const devPanels = document.createElement("div");
       devPanels.className = "music-dev-panels";
       stage.append(devPanels);
-      const closeDebugPanel = (key: "developerMode" | "motionDebug") => {
+      const closeDebugPanel = (key: "developerMode" | "motionDebug" | "performanceDebug") => {
         preferences[key] = false;
         savePrefs();
         if (panel === "settings") renderSettingsPanel();
@@ -2513,6 +2520,10 @@ async function start() {
           savePrefs();
         },
         onClose: () => closeDebugPanel("developerMode"),
+      });
+      performanceControls = setupPerformanceLab(devPanels, {
+        enabled: preferences.performanceDebug,
+        onClose: () => closeDebugPanel("performanceDebug"),
       });
     }
     await Promise.all([
