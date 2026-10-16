@@ -1572,11 +1572,17 @@ const desktopBridge = () =>
       showOpenDirectories(): Promise<string[]>;
       pathForFile?(file: File): string;
       onTransport?(handler: (action: string) => void): () => void;
+      getStartupFlags?(): Promise<{ disableGpuVsync: boolean }>;
+      setStartupFlag?(flag: "disableGpuVsync", value: boolean): Promise<{ disableGpuVsync: boolean }>;
       platform: string;
       version: string;
     };
   }).rhineDesktop;
 const windowsDesktop = () => desktopBridge()?.platform === "win32";
+// 主进程持有的启动期开关（垂直同步等）。异步取一次，供设置面板显示当前状态；
+// 改它必须重启应用，因为 Chromium 只在进程启动时决定这些。
+let startupFlags: { disableGpuVsync: boolean } = { disableGpuVsync: false };
+void desktopBridge()?.getStartupFlags?.().then((flags) => { if (flags) startupFlags = flags; });
 
 // 音乐目录以标签列表编辑；手工粘贴保留在「高级」折叠区里，两者始终是同一份列表。
 let pendingRoots: string[] = [];
@@ -1732,6 +1738,7 @@ function renderSettingsPanel() {
     <section class="panel-section"><h3>高级设置 · 专辑阵列</h3><label class="settings-row"><span>专辑列显示<small>改变阵列数量，保留当前选择和播放</small></span><select id="music-array-mode" aria-label="专辑列显示方式"><option value="filled" ${preferences.arrayMode === "filled" ? "selected" : ""}>填充画面</option><option value="realistic" ${preferences.arrayMode === "realistic" ? "selected" : ""}>真实专辑列</option></select></label><p>填充画面：循环摆放封面，铺满视野。真实专辑列：每张专辑只摆放一次，各列独立居中；上下浏览到本列首尾时停止。</p><label class="settings-row"><span>保留每列浏览位置<small>开启后记住每列上次的位置；关闭后保持画面深度，选中邻近专辑</small></span><input type="checkbox" id="remember-column-position" ${preferences.rememberColumnPosition ? "checked" : ""}></label></section>
     ${audioOutputMarkup()}
     ${qualityMarkup(renderQuality)}
+    ${windowsDesktop() ? `<section class="panel-section" id="vsync-settings"><h3>垂直同步</h3><label class="settings-row"><span>关闭垂直同步<small>解除刷新率量化：原始档实测帧时间 10ms → 5.1ms、帧率 +45%。可能画面撕裂，重启应用后生效</small></span><input type="checkbox" id="disable-vsync" aria-label="关闭垂直同步" ${startupFlags.disableGpuVsync ? "checked" : ""}></label></section>` : ""}
     <section class="panel-section"><h3>动效与显示</h3><label class="settings-row"><span>减少动态效果<small>简化镜头、文字加载和页签过渡</small></span><input type="checkbox" id="reduced-motion" ${preferences.reduced ? "checked" : ""}></label><button class="text-button" data-action="fullscreen">切换全屏 ↗</button><button class="text-button" data-action="replay-boot">重播开场 ↗</button><button class="text-button" data-action="reload-interface">重新载入界面 ↻</button></section>
     <section class="panel-section"><h3>声音</h3><label class="settings-row"><span>歌曲音量</span><input type="range" id="volume" aria-label="歌曲音量" min="0" max="100" value="${Math.round(preferences.volume * 100)}"></label><label class="settings-row"><span>歌曲衔接<small>选择切换歌曲时的音量过渡</small></span><select id="song-fade-setting" aria-label="歌曲衔接方式"><option value="fade-out" ${preferences.songTransition === "fade-out" ? "selected" : ""}>淡出但不淡入</option><option value="fade-in-out" ${preferences.songTransition === "fade-in-out" ? "selected" : ""}>淡出淡入</option><option value="gapless" ${preferences.songTransition === "gapless" ? "selected" : ""}>无缝播放</option></select></label><label class="settings-row"><span>界面音效<small>玻璃卡片与终端操作</small></span><input type="checkbox" id="sound-setting" ${preferences.sound ? "checked" : ""}></label><label class="settings-row"><span>音效音量</span><input type="range" id="sound-volume" aria-label="音效音量" min="0" max="100" value="${Math.round(preferences.soundVolume * 100)}"></label><label class="settings-row"><span>氛围 BGM<small>专辑开始前淡出，停止后淡入</small></span><input type="checkbox" id="bgm-setting" ${preferences.bgm ? "checked" : ""}></label><label class="settings-row"><span>BGM 音量</span><input type="range" id="bgm-volume" aria-label="BGM 音量" min="0" max="100" value="${Math.round(preferences.bgmVolume * 100)}"></label><button class="text-button" data-action="sound-preview">试听界面音效 ↗</button><p>歌曲输出方式可在上方选择。界面音效和氛围音乐仍由浏览器播放，音量分别控制。</p></section>
     <details class="panel-section" id="musicbrainz-settings"><summary>高级设置 · MusicBrainz</summary><p>向 MusicBrainz 查询专辑名称与艺术家，补充流派和制作人员；音乐文件留在本机。已有资料使用缓存，人工分类优先保留。</p><button data-action="enrich-library" class="text-button">补充缺失的在线资料 ↗</button><div id="online-config"><p>正在读取资料库设置…</p></div></details>
@@ -2158,6 +2165,12 @@ document.addEventListener("change", (e) => {
     void changeAudioOutput(el.value === "coreaudio" ? "coreaudio" : "browser", playerState.outputDeviceId);
   }
   if (el.id === "audio-device") void changeAudioOutput(playerState.backend, el.value);
+  if (el.id === "disable-vsync") {
+    void desktopBridge()?.setStartupFlag?.("disableGpuVsync", el.checked).then((flags) => {
+      if (flags) startupFlags = flags;
+    });
+    notify(el.checked ? "已关闭垂直同步，重启应用后生效。" : "已恢复垂直同步，重启应用后生效。");
+  }
   if (el.id === "developer-mode") {
     preferences.developerMode = el.checked;
     lightingControls?.setEnabled(el.checked);

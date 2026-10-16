@@ -58,6 +58,11 @@ function writeSettings(value) {
   try { mkdirSync(USER_DIR, { recursive: true }); writeFileSync(SETTINGS_FILE, JSON.stringify(value, null, 2)) } catch {}
 }
 
+// ④ 垂直同步：Chromium 只在进程启动时决定，运行时不切换，所以必须在这里读。
+// 关闭后解除刷新率量化（200Hz 屏实测 p50 从 10ms 降到 5.1ms、帧率 +45%），
+// 代价是可能出现画面撕裂。
+if (readSettings().disableGpuVsync === true) app.commandLine.appendSwitch('disable-gpu-vsync')
+
 // ⑤ 窗口尺寸 / 位置 / 最大化记忆
 function readWindowState() {
   try {
@@ -250,7 +255,15 @@ async function start() {
   // 原生服务经 SMTC 收到媒体键后推事件上来，直接复用托盘那条 rhine:transport 通道。
   runtime.output.onMediaKey = (action) => { if (mainWindow) mainWindow.webContents.send('rhine:transport', action) }
   protocol.handle('app', createAppProtocol({ ...runtime, distDir: DIST_DIR, appOrigin: APP_ORIGIN }))
-  ipcMain.handle('dialog:openDirectories', async (event) => {
+  ipcMain.handle('settings:getStartupFlags', () => ({
+  disableGpuVsync: readSettings().disableGpuVsync === true,
+}))
+ipcMain.handle('settings:setStartupFlag', (_event, flag, value) => {
+  if (flag !== 'disableGpuVsync') return { disableGpuVsync: readSettings().disableGpuVsync === true }
+  writeSettings({ ...readSettings(), disableGpuVsync: value === true })
+  return { disableGpuVsync: value === true }
+})
+ipcMain.handle('dialog:openDirectories', async (event) => {
     const parent = BrowserWindow.fromWebContents(event.sender) ?? mainWindow
     const result = await dialog.showOpenDialog(parent, { title: '选择音乐文件夹', buttonLabel: '添加', properties: ['openDirectory', 'multiSelections'] })
     return result.canceled ? [] : result.filePaths

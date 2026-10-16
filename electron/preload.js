@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('rhineDesktop', {
     ipcRenderer.on('rhine:transport', listener)
     return () => ipcRenderer.removeListener('rhine:transport', listener)
   },
+  // 启动期开关（垂直同步等）由主进程持有，因为 Chromium 只在启动时决定这些。
+  getStartupFlags: () => ipcRenderer.invoke('settings:getStartupFlags'),
+  setStartupFlag: (flag, value) => ipcRenderer.invoke('settings:setStartupFlag', flag, value),
   platform: process.platform,
   version,
 })
