@@ -114,6 +114,12 @@ export class CoverAtlas {
   private readonly selectedCanvas = document.createElement("canvas");
   private readonly tileCanvas = document.createElement("canvas");
   private readonly uploadCanvas = document.createElement("canvas");
+  // 这两个画布只被 drawImage 读写、再交给 texSubImage2D。GPU 后备会让每次
+  // 上传都触发一次画布回读加同步（实测整批 108MiB 要 7.4 秒，约 15MB/s）；
+  // willReadFrequently 让它们留在系统内存里，整条链路变成内存拷贝加正常上传。
+  // 注意：getContext 的选项只在第一次调用时生效，所以必须在这里建好。
+  private readonly atlasContext: CanvasRenderingContext2D;
+  private readonly uploadContext: CanvasRenderingContext2D;
   private readonly uploadTexture: THREE.Texture;
   private readonly atlas: THREE.CanvasTexture;
   private readonly selectedTexture: THREE.CanvasTexture;
@@ -157,6 +163,8 @@ export class CoverAtlas {
     this.tileCanvas.height = this.tileHeight;
     this.uploadCanvas.width = this.tileWidth;
     this.uploadCanvas.height = this.tileHeight;
+    this.atlasContext = this.atlasCanvas.getContext("2d", { willReadFrequently: true })!;
+    this.uploadContext = this.uploadCanvas.getContext("2d", { willReadFrequently: true })!;
     // This CPU-only source is copied directly into a subregion of the atlas.
     // It must never be initialized as a separate GPU texture.
     this.uploadTexture = new THREE.Texture(this.uploadCanvas);
@@ -476,7 +484,7 @@ export class CoverAtlas {
       if (image) paintCover(this.tileCanvas, record, image);
       const x = (slot % this.columns) * this.tileWidth,
         y = Math.floor(slot / this.columns) * this.tileHeight;
-      const context = this.atlasCanvas.getContext("2d")!;
+      const context = this.atlasContext;
       context.clearRect(x, y, this.tileWidth, this.tileHeight);
       context.drawImage(this.tileCanvas, x, y);
       this.dirtySlots.add(slot);
@@ -542,7 +550,7 @@ export class CoverAtlas {
       finally { this.atlas.source.dataReady = true; }
     }
     const startedAt = performance.now();
-    const context = this.uploadCanvas.getContext("2d")!;
+    const context = this.uploadContext;
     const destination = new THREE.Vector2();
     let uploaded = 0;
     const legacy = this.legacyUpload();

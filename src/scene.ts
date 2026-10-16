@@ -1949,10 +1949,16 @@ export class ArchiveScene {
     lap("drainTiles");
     // Real draws initialize transmission, shadow, AO and depth-of-field targets.
     // They cannot be warmed by compiling the main scene's materials alone.
+    let warmRenderMs = 0;
+    let warmWaitMs = 0;
     for (let i = 0; i < 2; i++) {
       if (this.disposed) return;
+      const renderStart = performance.now();
       this.update(performance.now() / 1000, settled);
+      warmRenderMs += performance.now() - renderStart;
+      const waitStart = performance.now();
       await nextFrame();
+      warmWaitMs += performance.now() - waitStart;
     }
     lap("warmDraws");
     if (this.disposed) return;
@@ -1962,6 +1968,8 @@ export class ArchiveScene {
       // 页面开始到本段准备启动之间的耗时，用来判断准备阶段之外还花了多少。
       sinceNavigationStart: Math.round(started),
       phases,
+      warmRenderMs: Math.round(warmRenderMs),
+      warmWaitMs: Math.round(warmWaitMs),
       drainRounds,
       parallelCompile: this.renderer.extensions.has("KHR_parallel_shader_compile"),
       glError: this.renderer.getContext().getError(),
