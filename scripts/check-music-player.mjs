@@ -126,6 +126,42 @@ function finishSong(audio) {
   audio.dispatchEvent(new Event('pause'))
   audio.dispatchEvent(new Event('ended'))
 }
+test('play modes: list wraps, one repeats on natural end, shuffle visits every track once', async (t) => {
+  const env = environment(t)
+  const player = new MusicPlayer({ volume: 0, bgmEnabled: false })
+  const tracks = [track('a'), track('b'), track('c')]
+  // 切歌时 play() 会 await 上一首的淡出，淡出靠定时器推进。
+  // 所以必须「先发起、边推进边等」，不能先 await 再推进，否则直接卡死。
+  const settled = async (pending) => { await env.advance(1000); await pending }
+  const finishAndSettle = () => settled((() => { finishSong(env.instances.at(-1)); return Promise.resolve() })())
+
+  // 列表循环：最后一首自然播完回到第一首（不再是 stop()）。
+  assert.equal(player.state.playMode, 'list')
+  await playSettled(env, player, 'c', tracks)
+  await finishAndSettle()
+  assert.equal(player.state.currentTrack?.id, 'a')
+
+  // 单曲循环：自然播完重播同一首，但手动「下一首」仍然换歌。
+  player.setPlayMode('one')
+  await playSettled(env, player, 'a')
+  await finishAndSettle()
+  assert.equal(player.state.currentTrack?.id, 'a', 'natural end repeats the same track')
+  await settled(player.next())
+  assert.equal(player.state.currentTrack?.id, 'b', 'manual next still advances in single-repeat mode')
+
+  // 随机：连续切歌走遍三首不重复。
+  player.setPlayMode('shuffle')
+  const seen = new Set([player.state.currentTrack?.id])
+  for (let i = 0; i < 2; i += 1) { await settled(player.next()); seen.add(player.state.currentTrack?.id) }
+  assert.equal(seen.size, 3, 'shuffle covers every track once per round')
+  await settled(player.next())
+  assert.ok(['a', 'b', 'c'].includes(player.state.currentTrack?.id))
+
+  // 非法值回落为列表。
+  player.setPlayMode('nonsense')
+  assert.equal(player.state.playMode, 'list')
+  player.dispose()
+})
 
 test('BGM has an independent default, live volume, zero-volume gate, and clamped settings', async (t) => {
   const env = environment(t)
@@ -409,7 +445,7 @@ for (const mode of transitionModes) {
     })
   }
 
-  test(`${mode}: natural queue advance stays silent between songs and ends at the queue boundary`, async (t) => {
+  test(`${mode}: natural queue advance stays silent between songs and wraps at the queue boundary`, async (t) => {
     const env = environment(t)
     const player = new MusicPlayer({ songTransitionMode: mode, volume: 0.6, bgmVolume: 0.3 })
     env.gesture()
@@ -430,16 +466,18 @@ for (const mode of transitionModes) {
     assert.equal(bgm.paused, true)
     near(bgm.volume, 0)
     assert.ok(!states.includes('idle'), 'queue handoff has no idle intermediate state')
+    // 列表循环（0.4.3 起）：末尾回到第一首，不再进 idle。
+    // 连带影响：队列永不结束，BGM 不会从这条路径恢复。
     finishSong(second)
     await env.advance(700)
-    assert.equal(player.state.transport, 'idle')
+    assert.equal(player.state.currentTrack.id, 'first', 'the last track wraps back to the first')
+    assert.notEqual(player.state.transport, 'idle')
+    const wrapped = env.instances.at(-1)
+    assert.equal(env.instances.length, 4, 'wrapping starts the first track again')
+    // 重复的 ended 不能把队列推进两次。
+    finishSong(wrapped)
+    await env.advance(700)
     assert.equal(player.state.currentTrack.id, 'second')
-    assert.equal(env.instances.length, 3, 'the last track does not wrap or create another song')
-    assert.equal(bgm.playCalls, bgmStarts + 1)
-    near(bgm.volume, 0.3)
-    finishSong(second)
-    await env.advance(500)
-    assert.equal(env.instances.length, 3, 'duplicate ended cannot restart the queue')
     unsubscribe()
     player.dispose()
     assert.equal(env.pendingTimers(), 0)

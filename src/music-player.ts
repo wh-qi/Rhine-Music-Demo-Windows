@@ -32,11 +32,17 @@ export interface AudioOutputFormat {
   shareMode: "shared" | "exclusive"; bitPerfect: boolean;
 }
 
+/** 播放模式：列表循环 / 单曲循环 / 随机。没有「播完停止」——列表本身就循环。 */
+export type MusicPlayMode = "list" | "one" | "shuffle";
+export const normalizeMusicPlayMode = (value: unknown): MusicPlayMode =>
+  value === "one" || value === "shuffle" ? value : "list";
+
 export interface MusicPlayerState {
   transport: "idle" | "loading" | "playing" | "paused" | "error";
   currentTrack: MusicTrack | null;
   queue: readonly MusicTrack[];
   currentIndex: number;
+  playMode: MusicPlayMode;
   playing: boolean;
   loading: boolean;
   duration: number;
@@ -114,6 +120,7 @@ export class MusicPlayer {
       volume?: number;
       songTransitionMode?: SongTransitionMode;
       songFadeEnabled?: boolean;
+      playMode?: MusicPlayMode;
       bgmVolume?: number;
       bgmEnabled?: boolean;
     } = {},
@@ -123,6 +130,7 @@ export class MusicPlayer {
       currentTrack: null,
       queue: [],
       currentIndex: -1,
+      playMode: normalizeMusicPlayMode(options.playMode),
       playing: false,
       loading: false,
       duration: 0,
@@ -285,6 +293,8 @@ export class MusicPlayer {
     const queue = tracks ? uniqueTracks(tracks) : this.value.queue;
     if (tracks && (queue.length !== this.value.queue.length || queue.some((track, i) => track.id !== this.value.queue[i]?.id))) {
       this.gaplessFallback = false; this.value.transitionWarning = null;
+      // 换队列就重新洗牌，避免沿用上一张专辑的随机顺序。
+      this.playOrder = [];
     }
     const index = queue.findIndex((track) => track.id === id);
     if (index === -1) {
@@ -440,9 +450,12 @@ export class MusicPlayer {
       if (operation !== this.operation || this.disposed) return;
     }
     void this.gapless?.trackId;
-    const track = this.value.queue[this.value.currentIndex + 1];
-    if (track) await this.play(track.id);
-    else this.stop();
+    const index = this.nextIndex(true);
+    const track = index === null ? null : this.value.queue[index];
+    if (track) {
+      if (track.id === this.value.currentTrack?.id) this.seek(0);
+      else await this.play(track.id);
+    } else this.stop();
   }
 
   async previous(): Promise<void> {
@@ -456,10 +469,11 @@ export class MusicPlayer {
       this.seek(0);
       return;
     }
-    const track = this.value.queue[Math.max(0, this.value.currentIndex - 1)];
+    const index = this.previousIndex();
+    const track = index === null ? null : this.value.queue[index];
     if (track) {
       if (track.id === this.value.currentTrack?.id) this.seek(0);
-      await this.play(track.id);
+      else await this.play(track.id);
     }
   }
 
@@ -712,7 +726,8 @@ export class MusicPlayer {
       this.value.playing = false;
       this.value.loading = false;
       this.value.currentTime = this.value.duration;
-      const next = this.value.queue[this.value.currentIndex + 1];
+      const endedIndex = this.nextIndex(false);
+      const next = endedIndex === null ? undefined : this.value.queue[endedIndex];
       if (next) {
         // No idle intermediate state, so BGM never appears between songs.
         void this.play(next.id);
@@ -925,9 +940,72 @@ export class MusicPlayer {
     } finally { if (this.preparation === controller) this.preparation = undefined; }
   }
 
+  /** 随机模式的播放顺序：queue 下标的一个排列。长度对不上就重新洗牌。 */
+  private playOrder: number[] = [];
+
+  private shuffledOrder(): number[] {
+    const length = this.value.queue.length;
+    if (this.playOrder.length !== length) {
+      const order = Array.from({ length }, (_, i) => i);
+      for (let i = order.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      // 当前曲目排到最前，避免刚洗牌就又听到同一首。
+      const current = order.indexOf(this.value.currentIndex);
+      if (current > 0) [order[0], order[current]] = [order[current], order[0]];
+      this.playOrder = order;
+    }
+    return this.playOrder;
+  }
+
+  /**
+   * 下一个 queue 下标。manual 表示用户按了「下一首」——
+   * 单曲循环只影响自动接续，手动切歌仍然按顺序走。
+   */
+  private nextIndex(manual = false): number | null {
+    const length = this.value.queue.length;
+    if (!length) return null;
+    const current = this.value.currentIndex;
+    if (this.value.playMode === "one" && !manual) return current >= 0 ? current : 0;
+    if (this.value.playMode === "shuffle") {
+      const order = this.shuffledOrder();
+      const position = order.indexOf(current);
+      if (position >= 0 && position + 1 < order.length) return order[position + 1];
+      // 一轮放完：重新洗牌。
+      this.playOrder = [];
+      return this.shuffledOrder()[0] ?? null;
+    }
+    return (current + 1) % length;
+  }
+
+  private previousIndex(): number | null {
+    const length = this.value.queue.length;
+    if (!length) return null;
+    const current = this.value.currentIndex;
+    if (this.value.playMode === "shuffle") {
+      const order = this.shuffledOrder();
+      const position = order.indexOf(current);
+      return position > 0 ? order[position - 1] : order[order.length - 1] ?? null;
+    }
+    return (current - 1 + length) % length;
+  }
+
+  setPlayMode(mode: unknown): void {
+    const next = normalizeMusicPlayMode(mode);
+    if (next === this.value.playMode) return;
+    this.value.playMode = next;
+    // 换模式时清空顺序；当前曲目保持播放，只影响后续。
+    this.playOrder = [];
+    this.emit();
+    this.prepareSuccessor();
+  }
+
   private prepareSuccessor(): void {
     if (this.disposed || this.value.songTransitionMode !== "gapless" || this.gaplessFallback || this.transport !== "playing") return;
-    const next = this.value.queue[this.value.currentIndex + 1];
+    // 自动接续走 nextIndex(false)：单曲循环时预排的是同一首。
+    const nextId = this.nextIndex(false);
+    const next = nextId === null ? undefined : this.value.queue[nextId];
     const operation = this.operation;
     if (this.value.backend === "browser") {
       void this.gapless?.prepareNext(next).catch(error => {
@@ -939,7 +1017,8 @@ export class MusicPlayer {
       const generation = this.nativePrepareGeneration;
       void cancelled.then(() => {
         if (generation !== this.nativePrepareGeneration || this.disposed || operation !== this.operation) return;
-        const next = this.value.queue[this.value.currentIndex + 1];
+        const laterId = this.nextIndex(false);
+        const next = laterId === null ? undefined : this.value.queue[laterId];
         if (!next) return;
         this.nativePreparedId = next.id;
         return this.nativeCommand({ action: "prepareNext", trackId: next.id, afterTrackId: this.value.currentTrack?.id });
@@ -1035,7 +1114,8 @@ export class MusicPlayer {
           this.value.playing = state.playing;
           if (state.endedSerial !== this.nativeEndedSerial && this.transport === "playing") {
             this.nativeEndedSerial = state.endedSerial;
-            const next = this.value.queue[this.value.currentIndex + 1];
+            const endedIndex = this.nextIndex(false);
+            const next = endedIndex === null ? undefined : this.value.queue[endedIndex];
             if (next) {
               if (this.value.songTransitionMode === "gapless") this.gaplessWarning();
               void this.play(next.id);
