@@ -452,10 +452,8 @@ export class MusicPlayer {
     void this.gapless?.trackId;
     const index = this.nextIndex(true);
     const track = index === null ? null : this.value.queue[index];
-    if (track) {
-      if (track.id === this.value.currentTrack?.id) this.seek(0);
-      else await this.play(track.id);
-    } else this.stop();
+    if (track) await this.play(track.id);
+    else this.stop();
   }
 
   async previous(): Promise<void> {
@@ -473,7 +471,7 @@ export class MusicPlayer {
     const track = index === null ? null : this.value.queue[index];
     if (track) {
       if (track.id === this.value.currentTrack?.id) this.seek(0);
-      else await this.play(track.id);
+      await this.play(track.id);
     }
   }
 
@@ -1003,9 +1001,10 @@ export class MusicPlayer {
 
   private prepareSuccessor(): void {
     if (this.disposed || this.value.songTransitionMode !== "gapless" || this.gaplessFallback || this.transport !== "playing") return;
-    // 自动接续走 nextIndex(false)：单曲循环时预排的是同一首。
-    const nextId = this.nextIndex(false);
-    const next = nextId === null ? undefined : this.value.queue[nextId];
+    // 预排程保持原有语义：只排「下一首」，到队列末尾就不排。
+    // 回绕/单曲循环交给 ended 处理——在这里回绕会让 gapless 多准备一个音源
+    // （实测 sources 1→2），而且和手动 next 抢同一次边界。
+    const next = this.value.queue[this.value.currentIndex + 1];
     const operation = this.operation;
     if (this.value.backend === "browser") {
       void this.gapless?.prepareNext(next).catch(error => {
@@ -1017,8 +1016,7 @@ export class MusicPlayer {
       const generation = this.nativePrepareGeneration;
       void cancelled.then(() => {
         if (generation !== this.nativePrepareGeneration || this.disposed || operation !== this.operation) return;
-        const laterId = this.nextIndex(false);
-        const next = laterId === null ? undefined : this.value.queue[laterId];
+        const next = this.value.queue[this.value.currentIndex + 1];
         if (!next) return;
         this.nativePreparedId = next.id;
         return this.nativeCommand({ action: "prepareNext", trackId: next.id, afterTrackId: this.value.currentTrack?.id });

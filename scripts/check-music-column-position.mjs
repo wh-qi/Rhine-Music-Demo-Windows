@@ -69,6 +69,8 @@ function fixture(saved) {
     const overviewUI = { collapse: () => calls.collapse++, canEnter: () => true };
     const setOverview = value => calls.overview.push(value);
     const cancelTrackReveal = () => calls.cancelReveal++;
+    // 歌词界面不在这个用例范围内；setMode 会调用 closeLyrics，按边界打桩。
+    const closeLyrics = () => {}, openLyrics = () => {}, lyricsView = { sync() {}, load() {} };
     const updateSelection = () => syncAlbumNavigation(), effects = { play: value => calls.effect.push(value) };
     ${['savePrefs', 'commitSelection', 'select', 'navigationSelection', 'syncAlbumNavigation', 'resolveColumnSelection', 'stepAlbum', 'stepGenre', 'setMode'].map(functionSource).join('\n')}
     function change(checked) {
