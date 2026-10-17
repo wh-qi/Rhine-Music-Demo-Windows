@@ -1217,6 +1217,12 @@ function syncLyricsTransport(state: MusicPlayerState) {
     mute.setAttribute("aria-label", silent ? "取消静音" : "静音");
     mute.dataset.silent = silent ? "true" : "false";
   }
+  // 音频就绪后补上之前那次拖动定位。
+  if (pendingSeekRatio !== null && state.duration > 0) {
+    const ratio = pendingSeekRatio;
+    pendingSeekRatio = null;
+    player.seek(ratio * state.duration);
+  }
   const volume = document.querySelector<HTMLInputElement>("#lyrics-volume");
   if (volume) volume.value = String(Math.round(state.volume * 100));
   // 播放模式：单键循环，图标随模式变化。
@@ -2199,11 +2205,20 @@ function playAlbum(id?: string) {
 
 // 进度条拖动：input 事件里实时 seek；拖动期间用 data-dragging 挡住状态回写。
 const seekSlider = document.querySelector<HTMLInputElement>("#lyrics-seek");
+// 还没载入音频时拖动进度：先开始播放，等时长就绪后再定位到该位置。
+let pendingSeekRatio: number | null = null;
 if (seekSlider) {
   const applySeek = () => {
+    const ratio = Number(seekSlider.value) / 1000;
     const total = player.state.duration;
-    if (!(total > 0)) return;
-    player.seek((Number(seekSlider.value) / 1000) * total);
+    if (!(total > 0)) {
+      const track = player.state.currentTrack ?? lyricsQueueTracks()[0];
+      if (!track) return;
+      pendingSeekRatio = ratio;
+      void player.play(track.id, lyricsQueueTracks());
+      return;
+    }
+    player.seek(ratio * total);
   };
   seekSlider.addEventListener("input", () => {
     seekSlider.dataset.dragging = "true";

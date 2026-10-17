@@ -3088,6 +3088,10 @@
   align-items: center;
   height: 16px;
   min-width: 80px;
+  /* 旧规则里埋了 rgba(127,127,127,.25) 的灰底，这里必须显式清掉，
+     否则细线后面会多出一条 16px 高的灰边。 */
+  background: transparent;
+  border-radius: 0;
 }
 .lyrics-progress::before {
   content: "";
