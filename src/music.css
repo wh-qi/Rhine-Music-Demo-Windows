@@ -2247,6 +2247,14 @@
   transition: opacity 0.32s ease, transform 0.32s ease;
   pointer-events: none;
 }
+/* 歌词界面打开时，专辑架自己的导航让位，别从卡片下方露出来。 */
+.music-app[data-lyrics="true"] .music-navigation,
+.music-app[data-lyrics="true"] .music-keyhint,
+.music-app[data-lyrics="true"] .music-browse {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.24s ease;
+}
 /* 打开态由 data-open 驱动，关闭时先退场再 hidden，避免闪一下。 */
 .music-lyrics[data-open="true"] {
   opacity: 1;

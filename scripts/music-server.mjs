@@ -128,6 +128,11 @@ async function routeApi(request, url, response, { store, decoder, output, distDi
   const lyricsRoute = /^\/api\/lyrics\/([a-zA-Z0-9-]+)$/.exec(route)
   if (lyricsRoute && get) {
     const lines = store.trackLyrics(lyricsRoute[1])
+    // 这个路由是纯内存读取、没有 IO await。ResponseSink 是同步 writeHead+end，
+    // 若在同一次同步返回里交出 body，Electron 的 app:// 协议层会在流 finish 前取走它，
+    // 渲染进程只看到 "Failed to fetch"（/api/health 也一直如此）。
+    // 让出一个宏任务，与带 IO 的路由保持同样的时序。
+    await new Promise((resolve) => setImmediate(resolve))
     if (!lines?.length) return json(response, 404, { error: '这首没有带时间轴的歌词' })
     return json(response, 200, { trackId: lyricsRoute[1], lines })
   }

@@ -1096,6 +1096,8 @@ function openLyrics() {
   syncLyricsChrome();
   clearTimeout(lyricsHideTimer);
   section.hidden = false;
+  // 专辑架自己的导航与按键提示要让位，否则会从卡片下方露出来。
+  stage.dataset.lyrics = "true";
   requestAnimationFrame(() => { section.dataset.open = "true"; });
   lyricsOpen = true;
   const track = player.state.currentTrack ?? album.tracks[0];
@@ -1108,6 +1110,7 @@ function closeLyrics() {
   const section = $("#music-lyrics") as HTMLElement;
   if (!section) return;
   section.dataset.open = "false";
+  delete stage.dataset.lyrics;
   clearTimeout(lyricsHideTimer);
   lyricsHideTimer = setTimeout(() => { if (!lyricsOpen) section.hidden = true; }, 320);
 }

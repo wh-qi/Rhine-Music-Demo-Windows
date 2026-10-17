@@ -35,7 +35,16 @@ async function serveStatic(distDir, url) {
 export function createAppProtocol({ store, decoder, output, distDir, appOrigin }) {
   return async function handleAppRequest(request) {
     const url = new URL(request.url)
-    if (url.pathname.startsWith('/api/')) return handleApi(toNodeRequest(request), url, { store, decoder, output, distDir, origin: appOrigin })
+    if (url.pathname.startsWith('/api/')) {
+      // 协议处理器里抛出的异常在渲染进程只表现为 "Failed to fetch"，这里必须留痕，
+      // 否则排查时完全看不到主进程侧的堆栈。
+      try {
+        return await handleApi(toNodeRequest(request), url, { store, decoder, output, distDir, origin: appOrigin })
+      } catch (error) {
+        console.error('[app-protocol] ' + url.pathname + ' 失败:', error?.stack ?? error)
+        throw error
+      }
+    }
     const origin = request.headers.get('origin')
     if (origin && origin !== appOrigin) return json(403, { error: '不接受跨站点访问本地曲库' })
     return serveStatic(distDir, url)
