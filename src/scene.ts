@@ -1587,7 +1587,12 @@ export class ArchiveScene {
       for (const inst of this.instances) inst.setMatrixAt(i, this.dummy.matrix);
       if (musicLibrary && this.covers) {
         this.covers.array.setMatrixAt(i, this.dummy.matrix);
-        this.covers.setSlot(i, records[fileAtCell(this.cells[i])]);
+        // 非真实格子的缩放为 0、不会被光栅化，给它们上传封面纯属白花 GPU 时间：
+        // 432 个槽位里只有约 62 个是真实格子，其余占了七成以上的上传量。
+        // 未上传的槽位 coverReady=0、片元被 discard；等它变成真实格子时 setSlot 会补上。
+        // 注意只跳过"非真实"，不跳过"被行数上限隐藏的真实格子"——后者仍须保持
+        // "每个真实格子都有封面"这一不变量（check-music-real-column-runtime 会验）。
+        if (this.actualCell(this.cells[i])) this.covers.setSlot(i, records[fileAtCell(this.cells[i])]);
       }
     }
     for (const inst of this.instances) inst.instanceMatrix.needsUpdate = true;
@@ -1939,23 +1944,31 @@ export class ArchiveScene {
     lap("prepareVisible");
     // Bound initialization work as well: at most 16 MiB of tiles per turn.
     // Normal animation uses the smaller 2 MiB / frame budget.
+    // 诊断开关：跳过排空。实测"集中排空"(6.9s 一帧) 比"摊到帧循环"(13s) 更省，
+    // 所以默认走排空；这个开关留着便于以后复核这个结论。
+    const skipDrain = typeof document !== "undefined" && document.documentElement.dataset.startupSkipDrain === "1";
+    const uploadedBefore = this.covers?.getStats().uploadedTiles ?? 0;
     let drainRounds = 0;
-    for (let i = 0; i < 12 && this.covers && this.covers.getStats().dirtyTiles; i++) {
+    for (let i = 0; i < 12 && !skipDrain && this.covers && this.covers.getStats().dirtyTiles; i++) {
       if (this.disposed) return;
       this.covers.pump(this.renderer, 12, 64);
       drainRounds += 1;
       await nextFrame();
     }
+    const drainUploaded = (this.covers?.getStats().uploadedTiles ?? 0) - uploadedBefore;
     lap("drainTiles");
     // Real draws initialize transmission, shadow, AO and depth-of-field targets.
     // They cannot be warmed by compiling the main scene's materials alone.
     let warmRenderMs = 0;
     let warmWaitMs = 0;
+    const warmFrames: number[] = [];
     for (let i = 0; i < 2; i++) {
       if (this.disposed) return;
       const renderStart = performance.now();
       this.update(performance.now() / 1000, settled);
-      warmRenderMs += performance.now() - renderStart;
+      const single = performance.now() - renderStart;
+      warmFrames.push(Math.round(single));
+      warmRenderMs += single;
       const waitStart = performance.now();
       await nextFrame();
       warmWaitMs += performance.now() - waitStart;
@@ -1970,7 +1983,10 @@ export class ArchiveScene {
       phases,
       warmRenderMs: Math.round(warmRenderMs),
       warmWaitMs: Math.round(warmWaitMs),
+      warmFrames,
       drainRounds,
+      drainUploaded,
+      skipDrain,
       parallelCompile: this.renderer.extensions.has("KHR_parallel_shader_compile"),
       glError: this.renderer.getContext().getError(),
       covers: this.covers?.getStats(),
