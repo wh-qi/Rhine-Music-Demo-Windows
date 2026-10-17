@@ -3285,4 +3285,63 @@
 }
 .music-lyrics .lyrics-more:hover { color: var(--ink); background: color-mix(in srgb, var(--surface) 60%, transparent); }
 
+
+/* ══ 竖屏与窄窗口适配 ════════════════════════════════════════ */
+/* 1. 返回按钮：竖屏原来从 80px 起，正好压在品牌字上（品牌占到约 90px）。 */
+.music-app[data-layout="portrait"] .music-lyrics { padding: 124px 5vw 116px; }
+.music-app[data-layout="portrait"] .music-lyrics > .music-back { margin: 0 0 12px 14px; }
+
+/* 2. 卡片：原来的竖屏规则只改成单列，那一行仍按内容撑开，
+      结果歌词区被挤到只剩 50px。这里把行高拆成「上段自适应 + 下段占满」。 */
+.music-app[data-layout="portrait"] .lyrics-card {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 18px 18px 14px;
+  height: 100%;
+}
+/* 上段（封面 / 标题 / 翻页）压缩，把高度让给歌词。 */
+.music-app[data-layout="portrait"] .lyrics-left {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "art title"
+    "art artist"
+    "art meta"
+    "pager pager"
+    "collection collection";
+  column-gap: 14px;
+  align-items: start;
+}
+.music-app[data-layout="portrait"] .lyrics-art { grid-area: art; max-width: 30vw; }
+.music-app[data-layout="portrait"] .lyrics-art img { width: 100%; height: auto; max-height: 22vh; object-fit: cover; }
+.music-app[data-layout="portrait"] .lyrics-left #lyrics-title { grid-area: title; margin: 0; font-size: 22px; }
+.music-app[data-layout="portrait"] .lyrics-artist { grid-area: artist; }
+.music-app[data-layout="portrait"] .lyrics-meta { grid-area: meta; }
+.music-app[data-layout="portrait"] .lyrics-pager { grid-area: pager; }
+.music-app[data-layout="portrait"] .lyrics-collection { grid-area: collection; }
+/* 歌词区占满剩余高度并自己滚动。 */
+.music-app[data-layout="portrait"] .lyrics-right { min-height: 0; }
+.music-app[data-layout="portrait"] .lyrics-lines { flex: 1 1 0; min-height: 0; }
+.music-app[data-layout="portrait"] .lyrics-line { font-size: 17px; padding: 12px 0 12px 14px; }
+.music-app[data-layout="portrait"] .lyrics-line[data-active="true"] { font-size: 24px; }
+
+/* 3. 传输栏：竖屏隐藏文字后按钮会挤在一起，缩一号并让进度条先收缩。 */
+.music-app[data-layout="portrait"] .lyrics-transport { padding: 12px 14px; gap: 8px; }
+.music-app[data-layout="portrait"] .lyrics-transport-thumb img { width: 40px; height: 40px; }
+.music-app[data-layout="portrait"] .lyrics-transport-buttons button { width: 30px; height: 30px; }
+.music-app[data-layout="portrait"] .lyrics-transport-buttons .lyrics-play { width: 44px; height: 44px; }
+.music-app[data-layout="portrait"] .lyrics-timeline { flex: 1 1 auto; min-width: 90px; max-width: none; }
+.music-app[data-layout="portrait"] .lyrics-volume input[type="range"] { width: 52px; }
+/* 弹层在竖屏下贴满可用宽度。 */
+.music-app[data-layout="portrait"] .lyrics-queue { width: min(320px, 78vw); max-height: 44vh; }
+
+/* 4. 窄但横向（例如 1024x768）：卡片两列会太挤，缩一下左列。 */
+@media (max-width: 1100px) and (min-height: 620px) {
+  .music-app:not([data-layout="portrait"]) .music-app .lyrics-card { grid-template-columns: minmax(180px, 30%) minmax(0, 1fr); }
+  .music-app:not([data-layout="portrait"]) .lyrics-left #lyrics-title { font-size: 22px; }
+  .music-app:not([data-layout="portrait"]) .lyrics-line { font-size: 18px; padding: 14px 0 14px 16px; }
+  .music-app:not([data-layout="portrait"]) .lyrics-line[data-active="true"] { font-size: 26px; }
+}
+
 .lyrics-transport-text strong, .lyrics-transport-text small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
