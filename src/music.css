@@ -2445,7 +2445,10 @@
 }
 /* 卡片与传输栏压在背景之上。返回按钮本来就是 absolute，只抬层级、不改定位。 */
 .lyrics-stage, .lyrics-transport { position: relative; z-index: 1; }
-.music-lyrics > .music-back { z-index: 2; left: 42px; top: 98px; }
+/* 品牌块占到 y≈90，返回按钮必须从它下面开始，否则会压字。 */
+/* 品牌块占到 y≈115，返回按钮放到它下面、卡片左侧的留白区。 */
+.music-lyrics > .music-back { z-index: 2; left: 42px; top: 190px; }
+.music-lyrics > .music-back { background: color-mix(in srgb, var(--surface) 70%, transparent); padding: 4px 10px; border-radius: 8px; }
 /* 顶部导航占掉约 90px，返回按钮再占一行，卡片从 128px 开始。 */
 .music-lyrics { padding-top: 128px; }
 /* 顶部导航浮在漫射背景之上（参考图也是这个关系），否则会被整屏背景盖掉。 */
@@ -2503,7 +2506,7 @@
   transform: scale(1.06);
 }
 .lyrics-backdrop {
-  background: color-mix(in srgb, var(--surface) 12%, transparent);
+  background: color-mix(in srgb, var(--surface) 8%, transparent);
 }
 /* 封面只做染色，不能盖住架子。 */
 .lyrics-backdrop img {
@@ -2511,12 +2514,12 @@
   opacity: 0;
   mix-blend-mode: soft-light;
 }
-.lyrics-backdrop img[data-active="true"] { opacity: 0.32; }
+.lyrics-backdrop img[data-active="true"] { opacity: 0.78; }
 /* 只留极薄一层主题色，压住过曝。 */
 .lyrics-backdrop::after {
   background: linear-gradient(180deg,
-    color-mix(in srgb, var(--surface) 2%, transparent),
-    color-mix(in srgb, var(--surface) 10%, transparent));
+    color-mix(in srgb, var(--surface) 10%, transparent),
+    color-mix(in srgb, var(--surface) 26%, transparent));
 }
 /* 卡片：低不透明度 + 强模糊 + 玻璃边缘高光。 */
 .lyrics-card {
@@ -2529,12 +2532,12 @@
 }
 /* 侧栏与传输栏同一套玻璃语言。 */
 .lyrics-queue {
-  background: color-mix(in srgb, var(--surface) 36%, transparent);
+  background: color-mix(in srgb, var(--surface) 28%, transparent);
   backdrop-filter: blur(24px) saturate(1.2);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.4);
 }
 .lyrics-transport {
-  background: color-mix(in srgb, var(--surface) 40%, transparent);
+  background: color-mix(in srgb, var(--surface) 30%, transparent);
   backdrop-filter: blur(26px) saturate(1.2);
   box-shadow: 0 16px 44px rgba(24, 32, 38, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.38);
 }
@@ -2557,11 +2560,11 @@
     color-mix(in srgb, var(--surface) 88%, transparent));
 }
 /* 卡片：无边框、大圆角、近乎半透明白。 */
-.lyrics-stage { grid-template-columns: minmax(0, 1fr) minmax(250px, 28%); gap: 20px; }
+.lyrics-stage { width: min(1560px, 100%); grid-template-columns: minmax(0, 1fr) minmax(240px, 25%); gap: 18px; }
 .lyrics-card {
   border: 0;
   border-radius: 30px;
-  background: color-mix(in srgb, var(--surface) 66%, transparent);
+  background: color-mix(in srgb, var(--surface) 30%, transparent);
   backdrop-filter: blur(30px) saturate(1.1);
   box-shadow: 0 28px 90px rgba(24, 32, 38, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.55);
   padding: 30px 34px 22px;
@@ -2609,12 +2612,12 @@
 .lyrics-line {
   font-family: var(--lyrics-serif);
   font-size: 20px;
-  line-height: 1.62;
-  padding: 10px 0 10px 18px;
-  color: color-mix(in srgb, var(--ink) 48%, transparent);
+  line-height: 1.72;
+  padding: 14px 0 14px 18px;
+  color: color-mix(in srgb, var(--ink) 64%, transparent);
 }
 .lyrics-line .lyrics-stamp { display: none; }
-.lyrics-line[data-past="true"] { opacity: 0.75; }
+.lyrics-line[data-past="true"] { opacity: 0.55; }
 .lyrics-line[data-active="true"] {
   font-size: 34px;
   font-weight: 700;
@@ -3026,4 +3029,16 @@
     overscroll-behavior: contain;
     scrollbar-width: thin;
   }
+/* ── 歌词界面：返回按钮归位（放在最末尾，压过前面所有 .music-back 规则）── */
+/* 品牌块占住左上角，返回按钮挪到左侧留白、垂直居中，两者不再重叠。 */
+.music-app .music-lyrics > .music-back {
+  top: 50%;
+  left: 30px;
+  transform: translateY(-50%);
+  z-index: 2;
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
 }
