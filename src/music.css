@@ -2502,9 +2502,10 @@
 .music-app .three-scene {
   transition: filter 0.45s ease, transform 0.45s ease;
 }
+/* 歌词界面：把架子虚化但不糊死，隔着玻璃还能认出那是专辑卡片。 */
 .music-app[data-lyrics="true"] .three-scene {
-  filter: blur(26px) saturate(1.3) brightness(1.04);
-  transform: scale(1.06);
+  filter: blur(14px) saturate(1.18) brightness(1.03);
+  transform: scale(1.04);
 }
 .lyrics-backdrop {
   background: transparent;
@@ -2516,7 +2517,7 @@
   opacity: 0;
   mix-blend-mode: normal;
 }
-.lyrics-backdrop img[data-active="true"] { opacity: 1; }
+.lyrics-backdrop img[data-active="true"] { opacity: 0.1; }
 /* 只留极薄一层主题色，压住过曝。 */
 .lyrics-backdrop::after {
   /* 不再叠白纱，否则封面的颜色会被洗掉；可读性靠卡片自己的磨砂层保证。 */
