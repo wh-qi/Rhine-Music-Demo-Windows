@@ -88,7 +88,6 @@
 .music-app .three-scene {
   opacity: 1;
   inset: 0;
-  transition: opacity calc(0.4s * var(--music-motion-scale, 1));
 }
 .music-app .three-scene canvas {
   width: 100%;
@@ -242,9 +241,7 @@
   position: absolute;
   left: 57%;
   right: 6.2%;
-  top: 33%;
   z-index: 3;
-  max-width: 520px;
   text-shadow: none;
 }
 .music-eyebrow {
@@ -272,12 +269,8 @@
   font-size: 9px;
 }
 .album-callout h1 {
-  font-size: clamp(27px, 2.7vw, 44px);
-  line-height: 1.2;
   font-weight: 700;
   margin: 0 0 10px;
-  letter-spacing: -0.8px;
-  overflow-wrap: anywhere;
   max-width: 100%;
 }
 .selection-artist {
@@ -549,9 +542,7 @@
   pointer-events: none;
   background: linear-gradient(90deg, transparent 42%, var(--veil) 66%, var(--page-bg) 96%);
 }
-.music-app[data-layout="portrait"] .music-browse-veil {
-  background: linear-gradient(180deg, transparent 28%, var(--page-bg) 62%);
-}
+
 .music-app[data-layout="portrait"] .music-detail::before {
   content: "";
   position: absolute;
@@ -564,7 +555,6 @@
   left: 52%;
 }
 #album-detail-content > h1 {
-  font-size: clamp(25px, 2.5vw, 39px);
   line-height: 1.22;
   font-weight: 600;
   margin: 0 0 10px;
@@ -2043,9 +2033,7 @@
 .music-app .viewer-heading {
   margin-left: 36px;
 }
-.music-app .viewer-heading h2 {
-  font-size: 25px;
-}
+
 .music-app .viewer-index {
   font-size: 39px;
 }
@@ -2249,18 +2237,8 @@
 }
 /* ── 播放列表侧栏 ─────────────────────────────────────────── */
 .lyrics-queue {
-  /* 它是 .music-lyrics 的 flex 子项，默认会被高大的卡片挤扁到只剩标题栏。 */
-  flex: none;
-  min-height: 108px;
-  width: min(1180px, 100%);
-  max-height: 30vh;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  background: var(--veil);
-  backdrop-filter: blur(18px);
-  padding: 14px 20px;
   overflow: hidden;
 }
 .lyrics-queue-head {
@@ -2277,38 +2255,22 @@
   list-style: none;
   margin: 0;
   padding: 6px 0 0;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
   scrollbar-width: none;
 }
 .lyrics-queue-list::-webkit-scrollbar { display: none; }
 .lyrics-queue-item {
   display: grid;
-  grid-template-columns: 32px 1fr auto;
   align-items: baseline;
   gap: 10px;
-  padding: 5px 8px;
   font-size: 12px;
   color: var(--muted);
   cursor: pointer;
-  border-radius: 8px;
 }
 .lyrics-queue-item:hover { background: rgba(127, 127, 127, 0.08); }
 .lyrics-queue-item[data-active="true"] { color: var(--ink); }
 .lyrics-queue-item[data-active="true"] .lyrics-queue-index { color: var(--accent); }
 .lyrics-queue-index, .lyrics-queue-time { font-variant-numeric: tabular-nums; font-size: 10px; opacity: 0.7; }
 .lyrics-queue-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* 竖屏：卡片改成单列，侧栏高度收窄。 */
-.music-app[data-layout="portrait"] .lyrics-card {
-  grid-template-columns: 1fr;
-  gap: 18px;
-  padding: 22px;
-}
-.music-app[data-layout="portrait"] .lyrics-art { max-width: 46%; }
-.music-app[data-layout="portrait"] .lyrics-line[data-active="true"] { font-size: 18px; }
-.music-app[data-layout="portrait"] .lyrics-queue { max-height: 22vh; }
 .music-app[data-layout="portrait"] .music-lyrics { padding: 80px 5vw 120px; }
 /* 超宽屏：卡片放宽，避免两侧空太多。 */
 @media (min-aspect-ratio: 21/9) {
@@ -2331,16 +2293,8 @@
 }
 .lyrics-card {
   display: grid;
-  grid-template-columns: minmax(200px, 24%) 1fr;
-  gap: 38px;
   width: min(1180px, 100%);
   max-height: 100%;
-  padding: 32px 36px;
-  border-radius: 26px;
-  border: 1px solid var(--line);
-  background: var(--veil);
-  backdrop-filter: blur(26px);
-  box-shadow: 0 26px 80px rgba(20, 26, 30, 0.12);
   overflow: hidden;
 }
 .lyrics-art img {
@@ -2358,8 +2312,6 @@
 }
 .lyrics-head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
   font-size: 10px;
   letter-spacing: 1.5px;
   color: var(--muted);
@@ -2370,9 +2322,6 @@
   list-style: none;
   margin: 0;
   padding: 16px 4px 24px;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
   scrollbar-width: none;
 }
 .lyrics-lines::-webkit-scrollbar { display: none; }
@@ -2380,20 +2329,12 @@
   display: flex;
   align-items: baseline;
   gap: 14px;
-  padding: 8px 0 8px 14px;
   border-left: 2px solid transparent;
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1.55;
   cursor: pointer;
   transition: color 0.24s ease, font-size 0.24s ease, opacity 0.24s ease;
 }
-.lyrics-line[data-past="true"] { opacity: 0.4; }
 .lyrics-line[data-active="true"] {
-  color: var(--ink);
-  font-size: 21px;
   font-family: Georgia, "Songti SC", serif;
-  border-left-color: var(--accent);
 }
 .lyrics-stamp {
   font-size: 10px;
@@ -2428,8 +2369,6 @@
   width: 136%;
   height: 136%;
   object-fit: cover;
-  filter: blur(46px) saturate(1.45) brightness(1.12);
-  opacity: 0;
   transition: opacity 0.6s ease;
   transform: scale(1.06);
 }
@@ -2439,9 +2378,6 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--surface) 58%, transparent),
-    color-mix(in srgb, var(--surface) 78%, transparent));
 }
 /* 卡片与传输栏压在背景之上。返回按钮本来就是 absolute，只抬层级、不改定位。 */
 .lyrics-stage, .lyrics-transport { position: relative; z-index: 1; }
@@ -2450,8 +2386,6 @@
    卡片从 148px 开始，所以窗口再小也不会压到卡片内容。 */
 .music-lyrics > .music-back { z-index: 2; left: 34px; top: 98px; }
 .music-lyrics > .music-back { background: color-mix(in srgb, var(--surface) 70%, transparent); padding: 4px 10px; border-radius: 8px; }
-/* 顶部导航约 90px + 返回按钮一行，卡片从 148px 开始。 */
-.music-lyrics { padding-top: 148px; }
 /* 顶部导航浮在漫射背景之上（参考图也是这个关系），否则会被整屏背景盖掉。 */
 .music-app[data-lyrics="true"] .music-header { z-index: 13; }
 /* 打开时背景轻微放大收束，和卡片的缩放同步。 */
@@ -2512,8 +2446,6 @@
 }
 /* 封面只做染色，不能盖住架子。 */
 .lyrics-backdrop img {
-  /* 模糊太重会把封面平均成一片灰；22px 还能留住色块和明暗。 */
-  filter: blur(22px) saturate(1.85) brightness(1.0);
   opacity: 0;
   mix-blend-mode: normal;
 }
@@ -2523,28 +2455,11 @@
   /* 不再叠白纱，否则封面的颜色会被洗掉；可读性靠卡片自己的磨砂层保证。 */
   display: none;
 }
-/* 卡片：低不透明度 + 强模糊 + 玻璃边缘高光。 */
-.lyrics-card {
-  background: color-mix(in srgb, var(--surface) 38%, transparent);
-  backdrop-filter: blur(28px) saturate(1.22);
-  box-shadow:
-    0 24px 70px rgba(24, 32, 38, 0.09),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.42);
-}
+
 /* 侧栏与传输栏同一套玻璃语言。 */
 .lyrics-queue {
-  background: color-mix(in srgb, var(--surface) 15%, transparent);
-  backdrop-filter: blur(24px) saturate(1.2);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.4);
 }
-.lyrics-transport {
-  background: color-mix(in srgb, var(--surface) 17%, transparent);
-  backdrop-filter: blur(26px) saturate(1.2);
-  box-shadow: 0 16px 44px rgba(24, 32, 38, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.38);
-}
-/* 玻璃上的当前项更亮一点。 */
-.lyrics-queue-item[data-active="true"] { background: color-mix(in srgb, var(--surface) 62%, transparent); }
 
 /* ── 对齐参考图：色调、字号、比例 ─────────────────────────── */
 .music-lyrics {
@@ -2561,8 +2476,6 @@
     color-mix(in srgb, var(--surface) 76%, transparent),
     color-mix(in srgb, var(--surface) 88%, transparent));
 }
-/* 卡片：无边框、大圆角、近乎半透明白。 */
-.lyrics-stage { width: min(1560px, 100%); grid-template-columns: minmax(0, 1fr) minmax(240px, 25%); gap: 18px; }
 .lyrics-card {
   border: 0;
   border-radius: 30px;
@@ -2574,27 +2487,13 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.85),
     inset 0 -1px 0 rgba(255, 255, 255, 0.35),
     inset 0 0 0 1px rgba(255, 255, 255, 0.5);
-  padding: 30px 34px 22px;
 }
 .lyrics-card .lyrics-art img { border-radius: 10px; }
 /* 标题：参考图是大号粗衬线。 */
 .lyrics-left #lyrics-title {
   font-family: var(--lyrics-serif);
-  font-size: 29px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-  margin: 16px 0 2px;
 }
-.lyrics-artist { font-size: 15px; }
-.lyrics-meta { font-size: 10px; letter-spacing: 1.5px; }
-/* 翻页：大数字 + 纯文字箭头，和参考图一致。 */
-.lyrics-pager-arrows button {
-  width: auto; height: auto;
-  border: 0; background: transparent;
-  font-size: 22px; line-height: 1;
-  color: color-mix(in srgb, var(--ink) 55%, transparent);
-}
+
 /* LYRICS 头：▾ 与长横线。 */
 .lyrics-head::before {
   content: "▾";
@@ -2618,37 +2517,26 @@
 .lyrics-lines { padding-top: 26px; }
 .lyrics-line {
   font-family: var(--lyrics-serif);
-  font-size: 20px;
   line-height: 1.72;
-  padding: 14px 0 14px 18px;
   color: color-mix(in srgb, var(--ink) 64%, transparent);
 }
 .lyrics-line .lyrics-stamp { display: none; }
 .lyrics-line[data-past="true"] { opacity: 0.55; }
 .lyrics-line[data-active="true"] {
-  font-size: 34px;
-  font-weight: 700;
-  line-height: 1.3;
   color: var(--ink);
   border-left-width: 3px;
   border-left-color: var(--accent);
 }
 /* 侧栏：当前项是白色药丸。 */
 .lyrics-queue { border: 0; border-radius: 26px; background: color-mix(in srgb, var(--surface) 62%, transparent); backdrop-filter: blur(26px); }
-.lyrics-queue-item { padding: 7px 10px; border-radius: 12px; }
+.lyrics-queue-item { border-radius: 12px; }
 .lyrics-queue-item[data-active="true"] { background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: 0 4px 14px rgba(24,32,38,.07); }
 .lyrics-queue-text { font-size: 13px; }
-/* 传输栏：大圆播放键。 */
-.lyrics-transport { border: 0; border-radius: 999px; background: color-mix(in srgb, var(--surface) 66%, transparent); padding: 12px 22px; }
-.lyrics-transport-buttons .lyrics-play { width: 52px; height: 52px; }
-.lyrics-transport-buttons svg { width: 20px; height: 20px; }
-.lyrics-transport-buttons button { width: 38px; height: 38px; font-size: 18px; }
 
 /* ── 歌词界面：按参考图重排 ───────────────────────────────── */
 /* 卡片与播放列表并排；播放列表是右侧竖栏，不再是底部横条。 */
 .lyrics-stage {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 286px;
   gap: 16px;
   width: min(1360px, 100%);
   height: 100%;
@@ -2659,7 +2547,6 @@
   grid-template-columns: minmax(210px, 31%) minmax(0, 1fr);
   gap: 32px;
   padding: 26px 30px;
-  height: 100%;
   min-height: 0;
 }
 .lyrics-left {
@@ -2705,7 +2592,6 @@
   cursor: pointer;
 }
 .lyrics-pager-arrows button:hover { color: var(--ink); border-color: var(--ink); }
-.lyrics-right { min-height: 0; }
 .lyrics-tools { display: flex; align-items: center; gap: 8px; }
 .lyrics-tool {
   border: 1px solid var(--line);
@@ -2742,12 +2628,11 @@
   box-shadow: 0 18px 50px rgba(20, 26, 30, 0.1);
 }
 .lyrics-transport-thumb img { width: 38px; height: 38px; border-radius: 8px; object-fit: cover; display: block; }
-.lyrics-transport-text { display: flex; flex-direction: column; min-width: 0; max-width: 200px; }
-.lyrics-transport-text strong { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lyrics-transport-text small { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lyrics-transport-time { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.lyrics-progress { flex: 1; height: 3px; border-radius: 2px; background: rgba(127, 127, 127, 0.25); overflow: hidden; }
-.lyrics-progress-fill { height: 100%; width: 0; background: var(--ink); border-radius: 2px; }
+.lyrics-transport-text { display: flex; flex-direction: column; max-width: 200px; }
+.lyrics-transport-text strong { font-size: 12px; font-weight: 500; }
+.lyrics-transport-text small { font-size: 10px; color: var(--muted); }
+.lyrics-progress { flex: 1; overflow: hidden; }
+.lyrics-progress-fill { width: 0; }
 .lyrics-transport-buttons { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .lyrics-transport-buttons button {
   width: 32px;
@@ -2773,7 +2658,6 @@
 .music-app[data-layout="portrait"] .lyrics-line[data-active="true"] { font-size: 21px; }
 .music-app[data-layout="portrait"] .lyrics-queue { max-height: 22vh; }
 .music-app[data-layout="portrait"] .lyrics-transport-text { display: none; }
-.lyrics-transport-text { min-width: 0; }
 
 .lyrics-album {
   display: flex;
@@ -3061,10 +2945,7 @@
   background: color-mix(in srgb, var(--surface) 22%, transparent);
   backdrop-filter: blur(34px) saturate(1.15) brightness(1.04);
 }
-.music-app .music-lyrics .lyrics-queue {
-  background: color-mix(in srgb, var(--surface) 20%, transparent);
-  backdrop-filter: blur(30px) saturate(1.12) brightness(1.04);
-}
+
 .music-app .music-lyrics .lyrics-transport {
   background: color-mix(in srgb, var(--surface) 22%, transparent);
   backdrop-filter: blur(30px) saturate(1.12) brightness(1.04);
@@ -3205,7 +3086,7 @@
   color: color-mix(in srgb, var(--surface) 96%, transparent);
 }
 /* 标题可收缩，别把右侧控件挤出去。 */
-.lyrics-transport-text { min-width: 0; overflow: hidden; }.lyrics-transport-text strong, .lyrics-transport-text small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lyrics-transport-text { min-width: 0; overflow: hidden; }
 
 /* ══ 进度条：按参考图，两个时间在上、细线在下 ═══════════════ */
 .lyrics-timeline {
