@@ -274,7 +274,7 @@ stage.innerHTML = `
       <button data-action="search" aria-label="搜索">${icons.search}<span>搜索</span></button>
       <div class="theme-switch" aria-label="主题">${(["day", "night"] as Theme[]).map((t) => `<button data-theme="${t}" aria-label="${themeNames[t]}主题" aria-pressed="${preferences.theme === t}"><i class="theme-dot ${t}"></i><span>${themeNames[t]}</span></button>`).join("")}</div>
       <button data-action="settings" class="icon-button" aria-label="播放与画质设置">${icons.settings}</button>
-      <div class="minimal-transport" role="group" aria-label="音乐播放"><button type="button" data-action="locate-playing" id="transport-track" class="transport-track" aria-label="定位当前歌曲" aria-hidden="true" disabled><span id="transport-track-label"></span></button><button data-action="play-pause" id="play-pause" aria-label="播放" aria-pressed="false"><span class="transport-glyph transport-play" aria-hidden="true">${icons.play}</span><span class="transport-glyph transport-pause" aria-hidden="true">${icons.pause}</span></button><button data-action="stop" id="stop-playback" aria-label="停止">${icons.stop}</button><button data-action="cycle-play-mode" id="play-mode" aria-label="播放模式：列表循环" title="列表循环">${icons.loop}</button></div>
+      <div class="minimal-transport" role="group" aria-label="音乐播放"><button type="button" data-action="lyrics-playing" id="transport-track" class="transport-track" aria-label="查看当前歌曲歌词" aria-hidden="true" disabled><span id="transport-track-label"></span></button><button data-action="play-pause" id="play-pause" aria-label="播放" aria-pressed="false"><span class="transport-glyph transport-play" aria-hidden="true">${icons.play}</span><span class="transport-glyph transport-pause" aria-hidden="true">${icons.pause}</span></button><button data-action="stop" id="stop-playback" aria-label="停止">${icons.stop}</button><button data-action="cycle-play-mode" id="play-mode" aria-label="播放模式：列表循环" title="列表循环">${icons.loop}</button></div>
     </nav>
   </header>
   <div id="library-status" class="library-status"><i></i><span>正在读取本地音乐索引</span></div>
@@ -2375,6 +2375,11 @@ document.addEventListener("click", (e) => {
       if (track) revealAlbum(track.albumId, track.id, { reuseOpenAlbum: true });
       break;
     }
+    // 顶部「正在播放」标题：点它就进歌词界面，再点一次退出。
+    case "lyrics-playing":
+      if (lyricsOpen) closeLyrics();
+      else openLyrics();
+      break;
     case "close-panel":
     case "dismiss-panel":
       closePanel();
