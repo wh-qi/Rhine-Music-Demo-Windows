@@ -78,7 +78,7 @@ function fixture(saved, { rawStorage, denyStorage = false } = {}) {
     function markup() {
       const panel = { innerHTML: '' }, $ = () => panel;
       const themeNames = { day: '暖昼', night: '深夜' };
-      const sortLabels = { genre: { name: '按流派' }, artist: { name: '按歌手' }, album: { name: '按专辑名' } };
+      const sortLabels = { genre: { name: '按流派' }, artist: { name: '按歌手' }, album: { name: '按专辑名' }, track: { name: '按歌曲' } };
       const audioOutputMarkup = () => '', qualityMarkup = () => '', renderQuality = {};
       // 桌面外壳与启动期开关不属于这个用例的范围，和上面几个一样按边界打桩。
       const windowsDesktop = () => false, startupFlags = { disableGpuVsync: false };

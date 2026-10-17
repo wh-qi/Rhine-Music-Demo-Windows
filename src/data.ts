@@ -1,5 +1,5 @@
 import content from "../content/archives.json" with { type: "json" };
-import type { MusicAlbum, MusicGenre } from "./music-types";
+import type { MusicAlbum, MusicGenre, MusicTrack } from "./music-types";
 import { musicArtistKey, orderMusicAlbums, type MusicSortMode } from "./music-order.ts";
 export { orderMusicAlbums, type MusicSortMode } from "./music-order.ts";
 
@@ -16,6 +16,8 @@ export interface ArchiveRecord {
   findings: string[];
   source: string;
   album?: MusicAlbum;
+  /** 按歌曲排列时指向这条记录对应的曲目；其余模式下为空。 */
+  track?: MusicTrack;
 }
 
 export let records: ArchiveRecord[] = content.records;
@@ -34,6 +36,38 @@ export function setMusicAlbums(albums: MusicAlbum[], genres: MusicGenre[] = [], 
   const genreIds = [...genres.map((genre) => genre.id).filter((id) => usedGenres.has(id)), ...usedGenres].filter((id, index, all) => all.indexOf(id) === index);
   const genreNames = genreIds.map((id) => names.get(id) ?? id ?? "未分类");
   categories = ["全部专辑", ...genreNames];
+  if (sortMode === "track") {
+    // 一条记录 = 一首曲目。封面仍然取自所属专辑（record.album），
+    // 所以图集、槽位键、封面缓存那一套完全不用改。
+    // 编号用 track.id（专辑内唯一），避免同专辑曲目互相覆盖。
+    records = ordered.flatMap((album) => {
+      const category = names.get(album.genreId) ?? album.genreId ?? "未分类";
+      return album.tracks.map((track) => ({
+        id: track.id,
+        title: track.title,
+        en: album.artist,
+        department: album.artist,
+        category,
+        date: album.year ? String(album.year) : "年份未知",
+        lead: album.title,
+        clearance: album.offline ? "音乐库离线" : track.format,
+        abstract: album.folder,
+        findings: [album.title, track.format, ...(track.codec ? [track.codec] : [])],
+        source: "本地音乐库",
+        album,
+        track,
+      }));
+    });
+    archiveColumns = [];
+    filesByColumn = [];
+    for (let start = 0; start < records.length; start += 12) {
+      const end = Math.min(start + 12, records.length);
+      archiveColumns.push(`${String(start + 1).padStart(2, "0")}–${String(end).padStart(2, "0")}`);
+      filesByColumn.push(Array.from({ length: end - start }, (_, offset) => start + offset));
+    }
+    slotStride = Math.max(32, ...filesByColumn.map((files) => files.length + 12));
+    return;
+  }
   records = ordered.map((album) => ({
     id: album.id, title: album.title, en: album.artist, department: album.artist,
     category: names.get(album.genreId) ?? album.genreId ?? "未分类",

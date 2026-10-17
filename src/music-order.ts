@@ -1,6 +1,6 @@
 import type { MusicAlbum } from "./music-types";
 
-export type MusicSortMode = "genre" | "artist" | "album";
+export type MusicSortMode = "genre" | "artist" | "album" | "track";
 
 const collator = new Intl.Collator("zh-CN-u-co-pinyin", {
   usage: "sort",

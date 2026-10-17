@@ -164,7 +164,7 @@ if (!["day", "night"].includes(preferences.theme)) {
 }
 if (!Object.hasOwn(qualityPresets, preferences.quality))
   preferences.quality = "original";
-if (!["genre", "artist", "album"].includes(preferences.sortMode))
+if (!["genre", "artist", "album", "track"].includes(preferences.sortMode))
   preferences.sortMode = "genre";
 preferences.developerMode = preferences.developerMode === true;
 preferences.motionDebug = preferences.motionDebug === true;
@@ -183,6 +183,7 @@ const sortLabels: Record<MusicSortMode, { name: string; column: string; code: st
   genre: { name: "按流派", column: "流派", code: "GENRE" },
   artist: { name: "按歌手名字", column: "歌手", code: "ARTIST" },
   album: { name: "按专辑名字", column: "分组", code: "ALBUMS" },
+  track: { name: "按歌曲", column: "分组", code: "TRACKS" },
 };
 const sortLabel = sortLabels[preferences.sortMode];
 let libraryReceived = false,
@@ -277,7 +278,7 @@ stage.innerHTML = `
   <section id="music-browse" class="music-browse" aria-label="专辑浏览">
     <div class="music-browse-veil" aria-hidden="true"></div>
     <div class="album-callout"><p class="music-eyebrow">MUSIC ARCHIVE <span>／</span> <span id="selection-genre"></span></p>
-      <div class="selection-rule"><span id="selection-code">ALBUM <span id="selection-code-number">001</span></span><span id="selection-format"></span></div>
+      <div class="selection-rule"><span id="selection-code"><span id="selection-code-label">ALBUM</span> <span id="selection-code-number">001</span></span><span id="selection-format"></span></div>
       <h1 id="selection-title"></h1><p id="selection-artist" class="selection-artist"></p>
       <div class="selection-meta" id="selection-meta"></div>
       <button class="open-album" data-action="open">打开专辑 <span>↗</span></button>
@@ -341,7 +342,10 @@ function genreName(id: string) {
   return genres.find((g) => g.id === id)?.name || "未分类";
 }
 function currentAlbum() {
-  return albums.find((a) => a.id === records[selected]?.id);
+  // 按歌曲排列时 record.id 是曲目 id，专辑要从 record.album 取；
+  // 其余模式保持原来的 id 匹配。
+  const record = records[selected];
+  return record?.album ?? albums.find((a) => a.id === record?.id);
 }
 function formatList(a: MusicAlbum) {
   return (
@@ -817,6 +821,8 @@ function updateSelection(navigation?: ArchiveNavigation) {
     titleMotion.finish();
     return;
   }
+  // 按歌曲排列时这条记录自带曲目；其余模式为 undefined。
+  const track = records[selected]?.track;
   const location = fileLocation(selected),
     files = columnFiles(location.lane),
     idx = files.indexOf(selected);
@@ -833,21 +839,30 @@ function updateSelection(navigation?: ArchiveNavigation) {
       genreName: archiveColumns[location.lane],
       format: demo
         ? "DEMO"
-        : [...new Set(a.tracks.map((t) => t.format))].join(" / "),
+        : track
+          ? track.format
+          : [...new Set(a.tracks.map((t) => t.format))].join(" / "),
       artist: a.artist,
-      meta: [
-        a.year ? String(a.year) : "年份未提供",
-        demo ? "演示封面" : `${a.tracks.length} 首曲目`,
-        a.tracks.length ? time(albumDuration(a)) : "",
-      ]
-        .filter(Boolean)
-        .join("  /  "),
+      // 曲目模式把专辑名放进 meta，作为这首曲子属于哪张专辑的上下文。
+      meta: track
+        ? [a.title, track.format, track.duration ? time(track.duration) : ""]
+            .filter(Boolean)
+            .join("  /  ")
+        : [
+            a.year ? String(a.year) : "年份未提供",
+            demo ? "演示封面" : `${a.tracks.length} 首曲目`,
+            a.tracks.length ? time(albumDuration(a)) : "",
+          ]
+            .filter(Boolean)
+            .join("  /  "),
     },
     animated,
     navigation,
   );
-  titleMotion.update(a.title, animated);
-  $("#selection-title").title = a.title;
+  const heading = track?.title ?? a.title;
+  $("#selection-code-label").textContent = track ? "TRACK" : "ALBUM";
+  titleMotion.update(heading, animated);
+  $("#selection-title").title = heading;
   tickMotion.update(
     files.map((index) => ({ index, id: records[index].id, title: records[index].title })),
     selected,
@@ -1732,7 +1747,7 @@ function renderSearchResults() {
 function renderSettingsPanel() {
   $("#panel-body").innerHTML =
     `<section class="panel-section"><h3>外观主题</h3><div class="theme-cards">${(["day", "night"] as Theme[]).map((t) => `<button data-theme="${t}" aria-pressed="${preferences.theme === t}" class="${t}"><i></i><strong>${themeNames[t]}</strong><span>${t === "day" ? "暖白玻璃与日光" : "极简星空与透光白卡"}</span></button>`).join("")}</div></section>
-    <section class="panel-section"><h3>音乐库排列</h3><label class="settings-row"><span>排列方式<small>切换后自动刷新页面</small></span><select id="music-sort" aria-label="音乐库排列方式">${(["genre", "artist", "album"] as MusicSortMode[]).map((value) => `<option value="${value}" ${preferences.sortMode === value ? "selected" : ""}>${sortLabels[value].name}</option>`).join("")}</select></label><p>按歌手时，同一歌手的专辑放在同一列；按专辑名时，按拼音或字母顺序排列，每 12 张一列。</p></section>
+    <section class="panel-section"><h3>音乐库排列</h3><label class="settings-row"><span>排列方式<small>切换后自动刷新页面</small></span><select id="music-sort" aria-label="音乐库排列方式">${(["genre", "artist", "album", "track"] as MusicSortMode[]).map((value) => `<option value="${value}" ${preferences.sortMode === value ? "selected" : ""}>${sortLabels[value].name}</option>`).join("")}</select></label><p>按歌手时，同一歌手的专辑放在同一列；按专辑名时，按拼音或字母顺序排列，每 12 张一列；按歌曲时以单曲为单位，同样每 12 首一列，封面取所属专辑。</p></section>
     <section class="panel-section" id="introduction-settings"><h3>专辑介绍</h3><p>从公开百科查询并更新专辑介绍，附上资料来源。介绍保存在本机，音乐文件不会上传。</p><p id="introduction-coverage"></p><button class="primary-button" id="introduction-refresh" data-action="introductions-library">查询 / 更新专辑介绍 ↗</button><progress id="introduction-progress" aria-label="专辑介绍查询进度" max="1" value="0" hidden></progress><p id="introduction-status" class="scan-status" role="status" aria-live="polite"></p><details id="introduction-missing" hidden><summary></summary><ul></ul></details></section>
     <section class="panel-section" id="credits-settings"><h3>制作信息</h3><p>从 QQ 音乐核对曲目的参与人员，在姓名下方注明来源。保留本地标签与已有资料，查询结果保存在本机。</p><p id="credits-coverage"></p><button class="primary-button" id="credits-refresh" data-action="credits-library">查询缺失的制作信息 ↗</button><progress id="credits-progress" aria-label="制作信息查询进度" max="1" value="0" hidden></progress><p id="credits-status" class="scan-status" role="status" aria-live="polite"></p></section>
     <section class="panel-section"><h3>高级设置 · 专辑阵列</h3><label class="settings-row"><span>专辑列显示<small>改变阵列数量，保留当前选择和播放</small></span><select id="music-array-mode" aria-label="专辑列显示方式"><option value="filled" ${preferences.arrayMode === "filled" ? "selected" : ""}>填充画面</option><option value="realistic" ${preferences.arrayMode === "realistic" ? "selected" : ""}>真实专辑列</option></select></label><p>填充画面：循环摆放封面，铺满视野。真实专辑列：每张专辑只摆放一次，各列独立居中；上下浏览到本列首尾时停止。</p><label class="settings-row"><span>保留每列浏览位置<small>开启后记住每列上次的位置；关闭后保持画面深度，选中邻近专辑</small></span><input type="checkbox" id="remember-column-position" ${preferences.rememberColumnPosition ? "checked" : ""}></label></section>
@@ -1890,7 +1905,9 @@ async function queryCredits(one = false, force = false) {
 function playAlbum(id?: string) {
   const a = currentAlbum();
   if (!a?.tracks.length || a.offline) return;
-  void player.play(id || a.tracks[0].id, a.tracks);
+  // 按歌曲排列时从选中的那首开始播，其余模式沿用专辑第一首。
+  const selectedTrack = records[selected]?.track?.id;
+  void player.play(id || selectedTrack || a.tracks[0].id, a.tracks);
 }
 
 document.addEventListener("click", (e) => {
@@ -2192,7 +2209,7 @@ document.addEventListener("change", (e) => {
     if (debugButton) debugButton.hidden = !el.checked;
     savePrefs();
   }
-  if (el.id === "music-sort" && ["genre", "artist", "album"].includes(el.value)) {
+  if (el.id === "music-sort" && ["genre", "artist", "album", "track"].includes(el.value)) {
     if (preferences.sortMode === el.value) return;
     preferences.sortMode = el.value as MusicSortMode;
     savePrefs();
