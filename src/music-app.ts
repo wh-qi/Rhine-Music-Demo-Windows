@@ -336,12 +336,6 @@ stage.innerHTML = `
           <p class="lyrics-empty" id="lyrics-empty">这首没有带时间轴的歌词。</p>
         </div>
       </article>
-      <aside class="lyrics-queue" aria-label="播放列表">
-        <header class="lyrics-queue-head"><span>播放列表</span><small id="lyrics-queue-count"></small></header>
-        <ol class="lyrics-queue-list" id="lyrics-queue-list"></ol>
-        <button type="button" class="lyrics-queue-toggle" data-action="lyrics-queue-toggle">收起列表 <span aria-hidden="true">⌃</span></button>
-      </aside>
-      <button type="button" class="lyrics-queue-open" data-action="lyrics-queue-toggle" aria-label="展开播放列表">≡</button>
     </div>
     <div class="lyrics-transport">
       <div class="lyrics-transport-thumb"><img id="lyrics-thumb" alt=""></div>
@@ -355,6 +349,8 @@ stage.innerHTML = `
         </div>
       </div>
       <div class="lyrics-transport-buttons">
+        <button type="button" data-action="lyrics-queue-toggle" id="lyrics-queue-btn" class="lyrics-queue-btn" aria-label="播放列表" aria-expanded="false" aria-controls="lyrics-queue">≡</button>
+        <button type="button" data-action="cycle-play-mode" class="lyrics-mode" id="lyrics-mode" aria-label="播放模式：列表循环"></button>
         <button type="button" data-action="player-prev" aria-label="上一首">‹</button>
         <button type="button" data-action="play-pause" class="lyrics-play" aria-label="播放">▶</button>
         <button type="button" data-action="player-next" aria-label="下一首">›</button>
@@ -363,11 +359,10 @@ stage.innerHTML = `
         <button type="button" data-action="lyrics-mute" id="lyrics-mute" aria-label="静音"></button>
         <input type="range" id="lyrics-volume" min="0" max="100" step="1" value="65" aria-label="音量">
       </div>
-      <div class="lyrics-modes" id="lyrics-modes" role="group" aria-label="播放模式">
-        <button type="button" data-play-mode="list">列表</button>
-        <button type="button" data-play-mode="one">单曲</button>
-        <button type="button" data-play-mode="shuffle">随机</button>
-      </div>
+      <aside class="lyrics-queue" id="lyrics-queue" aria-label="播放列表" hidden>
+        <header class="lyrics-queue-head"><span>播放列表</span><small id="lyrics-queue-count"></small></header>
+        <ol class="lyrics-queue-list" id="lyrics-queue-list"></ol>
+      </aside>
     </div>
   </section>
   <div id="music-empty" class="music-empty" hidden><small>YOUR PRIVATE COLLECTION</small><h1>让音乐进入这座档案馆。</h1><p>选择本地音乐文件夹，专辑封面会出现在每一张卡片上。</p><button data-action="library">设置音乐文件夹 ↗</button><button data-action="demo" class="subtle">先查看演示封面</button></div>
@@ -1224,10 +1219,15 @@ function syncLyricsTransport(state: MusicPlayerState) {
   }
   const volume = document.querySelector<HTMLInputElement>("#lyrics-volume");
   if (volume) volume.value = String(Math.round(state.volume * 100));
-  const modes = document.querySelectorAll<HTMLElement>("#lyrics-modes [data-play-mode]");
-  modes.forEach((node) => {
-    node.dataset.active = node.dataset.playMode === state.playMode ? "true" : "false";
-  });
+  // 播放模式：单键循环，图标随模式变化。
+  const mode = document.querySelector<HTMLElement>("#lyrics-mode");
+  if (mode) {
+    const view = playModeViews[normalizeMusicPlayMode(state.playMode)];
+    mode.innerHTML = view.icon;
+    mode.dataset.mode = state.playMode;
+    mode.title = view.label;
+    mode.setAttribute("aria-label", `播放模式：${view.label}（点击切换）`);
+  }
   const play = document.querySelector(".lyrics-play");
   if (play) {
     play.innerHTML = state.playing ? icons.pause : icons.play;
@@ -1274,7 +1274,10 @@ function openLyrics() {
   section.hidden = false;
   // 专辑架自己的导航与按键提示要让位，否则会从卡片下方露出来。
   stage.dataset.lyrics = "true";
-  section.dataset.queue = preferences.lyricsQueueOpen ? "open" : "closed";
+  // 播放列表是弹层，打开歌词界面时默认收起。
+  const queuePanel = document.querySelector<HTMLElement>("#lyrics-queue");
+  if (queuePanel) queuePanel.hidden = true;
+  $("#lyrics-queue-btn")?.setAttribute("aria-expanded", "false");
   requestAnimationFrame(() => { section.dataset.open = "true"; });
   lyricsOpen = true;
   const track = player.state.currentTrack ?? album.tracks[0];
@@ -2222,15 +2225,7 @@ if (volumeSlider) {
     if (panel && !player.state.bitPerfect) panel.value = String(Math.round(next * 100));
   });
 }
-// 播放模式分段控件。
-$("#lyrics-modes").addEventListener("click", (event) => {
-  const node = (event.target as HTMLElement).closest<HTMLElement>("[data-play-mode]");
-  if (!node) return;
-  const next = normalizeMusicPlayMode(node.dataset.playMode);
-  preferences.playMode = next;
-  savePrefs();
-  player.setPlayMode(next);
-});
+
 // 点击歌词行跳到该句。放在 document 监听之前，先处理这一层。
 $("#lyrics-queue-list").addEventListener("click", (event) => {
   const item = (event.target as HTMLElement).closest<HTMLElement>(".lyrics-queue-item");
@@ -2398,11 +2393,13 @@ document.addEventListener("click", (e) => {
       else openLyrics();
       break;
     case "lyrics-queue-toggle": {
-      const section = $("#music-lyrics") as HTMLElement;
-      const closed = section.dataset.queue === "closed";
-      section.dataset.queue = closed ? "open" : "closed";
-      preferences.lyricsQueueOpen = closed;
-      savePrefs();
+      // 播放列表改成从传输栏弹出的浮层，不再常驻侧边。
+      const panel = document.querySelector<HTMLElement>("#lyrics-queue");
+      if (!panel) break;
+      const open = panel.hidden;
+      panel.hidden = !open;
+      $("#lyrics-queue-btn")?.setAttribute("aria-expanded", String(open));
+      if (open) panel.querySelector<HTMLElement>(".lyrics-queue-item[data-active='true']")?.scrollIntoView({ block: "nearest" });
       break;
     }
     case "lyrics-back":

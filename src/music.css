@@ -3245,4 +3245,50 @@
   overscroll-behavior: contain;
 }
 
+/* ══ 播放列表改成弹层，不再常驻侧边 ═════════════════════════ */
+.lyrics-stage { grid-template-columns: minmax(0, 1fr); }
+.music-app .music-lyrics .lyrics-queue {
+  position: absolute;
+  /* 作为传输栏的子元素，锚在它正上方，跟 padding/布局变化无关。 */
+  right: 0;
+  bottom: calc(100% + 12px);
+  width: min(320px, 40vw);
+  max-height: 46vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px 10px;
+  border-radius: 20px;
+  z-index: 3;
+  /* 弹层要比常驻面板实一点，否则文字压不住底下的架子。 */
+  background: color-mix(in srgb, var(--surface) 74%, transparent);
+  backdrop-filter: blur(34px) saturate(1.2);
+  box-shadow:
+    0 24px 60px rgba(24, 32, 38, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+}
+.music-app .music-lyrics .lyrics-queue[hidden] { display: none; }
+.lyrics-queue-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* 传输栏里的列表按钮与模式按钮。 */
+.lyrics-queue-btn {
+  font-size: 15px !important;
+  color: var(--muted);
+}
+.lyrics-queue-btn[aria-expanded="true"] {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+}
+.lyrics-mode {
+  display: grid;
+  place-items: center;
+}
+.lyrics-mode svg { width: 17px; height: 17px; }
+.lyrics-mode[data-mode="one"], .lyrics-mode[data-mode="shuffle"] { color: var(--accent); }
+
 .lyrics-transport-text strong, .lyrics-transport-text small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
