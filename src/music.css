@@ -2231,6 +2231,118 @@
 .album-callout .open-album {
   margin-top: 22px;
 }
+/* ── 歌词界面 ─────────────────────────────────────────────── */
+.music-lyrics {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 92px 5vw 132px;
+  opacity: 0;
+  transform: scale(0.97);
+  transition: opacity 0.32s ease, transform 0.32s ease;
+  pointer-events: none;
+}
+/* 打开态由 data-open 驱动，关闭时先退场再 hidden，避免闪一下。 */
+.music-lyrics[data-open="true"] {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.lyrics-card {
+  display: grid;
+  grid-template-columns: minmax(200px, 24%) 1fr;
+  gap: 38px;
+  width: min(1180px, 100%);
+  max-height: 100%;
+  padding: 32px 36px;
+  border-radius: 26px;
+  border: 1px solid var(--line);
+  background: var(--veil);
+  backdrop-filter: blur(26px);
+  box-shadow: 0 26px 80px rgba(20, 26, 30, 0.12);
+  overflow: hidden;
+}
+.lyrics-art img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 14px;
+  background: var(--panel);
+}
+.lyrics-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.lyrics-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+.lyrics-lines {
+  list-style: none;
+  margin: 0;
+  padding: 16px 4px 24px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  scrollbar-width: none;
+}
+.lyrics-lines::-webkit-scrollbar { display: none; }
+.lyrics-line {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 8px 0 8px 14px;
+  border-left: 2px solid transparent;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+  cursor: pointer;
+  transition: color 0.24s ease, font-size 0.24s ease, opacity 0.24s ease;
+}
+.lyrics-line[data-past="true"] { opacity: 0.4; }
+.lyrics-line[data-active="true"] {
+  color: var(--ink);
+  font-size: 21px;
+  font-family: Georgia, "Songti SC", serif;
+  border-left-color: var(--accent);
+}
+.lyrics-stamp {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.5;
+}
+.lyrics-line[data-active="true"] .lyrics-stamp { opacity: 0.8; }
+.lyrics-empty {
+  display: none;
+  margin: auto;
+  font-size: 13px;
+  color: var(--muted);
+}
+.music-lyrics[data-lyrics-state="missing"] .lyrics-empty,
+.music-lyrics[data-lyrics-state="loading"] .lyrics-empty { display: block; }
+.music-lyrics[data-lyrics-state="loading"] .lyrics-lines { opacity: 0.35; }
+.lyrics-album {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.lyrics-album strong { color: var(--ink); font-weight: 500; }
+
 /* 按歌曲排列时「打开专辑」降为次要链接：小一号、无下边框、靠左。 */
 .album-callout .open-album.callout-minor {
   /* 它是 flex 容器（.album-callout）的子项，默认 align-self: stretch 会撑满交叉轴；

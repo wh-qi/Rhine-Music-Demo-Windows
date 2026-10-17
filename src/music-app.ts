@@ -33,7 +33,8 @@ import {
   type QualityPreset,
   type RenderQuality,
 } from "./render-quality";
-import { MusicPlayer, type MusicPlayerState, type AudioOutputFormat } from "./music-player";
+import { LyricsView } from "./music-lyrics";
+import { MusicPlayer, normalizeMusicPlayMode, type MusicPlayerState, type MusicPlayMode, type AudioOutputFormat } from "./music-player";
 import { normalizeSongTransition, type SongTransitionMode } from "./music-song-transition";
 import { ModelViewer } from "./model-viewer";
 import { TerminalAudio } from "./audio";
@@ -87,6 +88,10 @@ const icons = {
     '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2.5" fill="var(--surface)"/><circle cx="15" cy="17" r="2.5" fill="var(--surface)"/>',
   ),
   folder: svg('<path d="M3 7V5h6l2 2h10v13H3Z"/>'),
+  // 播放模式三态：列表循环 / 单曲循环 / 随机。
+  loop: svg('<path d="M5 12a7 7 0 0 1 12-4.9"/><path d="M17 3v4.2h-4.2"/><path d="M19 12a7 7 0 0 1-12 4.9"/><path d="M7 20.8v-4.2h4.2"/>'),
+  single: svg('<path d="M12 8.4v7.2"/><path d="m9.6 10.4 2.4-2"/><path d="M5 12a7 7 0 0 1 12-4.9"/><path d="M17 3v4.2h-4.2"/>'),
+  shuffle: svg('<path d="M4 7h4l8 10h4"/><path d="M4 17h4l8-10h4"/><path d="m17.6 4 2.4 3-2.4 3"/><path d="m17.6 14 2.4 3-2.4 3"/>'),
 };
 const read = <T>(key: string, fallback: T): T => {
   try {
@@ -104,6 +109,7 @@ const preferences = {
   ...{
     theme: "day" as Theme,
     sortMode: "genre" as MusicSortMode,
+    playMode: "list" as MusicPlayMode,
     arrayMode: "filled" as MusicArrayMode,
     rememberColumnPosition: true,
     audioBackend: "browser" as "browser" | "coreaudio",
@@ -166,6 +172,7 @@ if (!Object.hasOwn(qualityPresets, preferences.quality))
   preferences.quality = "original";
 if (!["genre", "artist", "album", "track"].includes(preferences.sortMode))
   preferences.sortMode = "genre";
+preferences.playMode = normalizeMusicPlayMode(preferences.playMode);
 preferences.developerMode = preferences.developerMode === true;
 preferences.motionDebug = preferences.motionDebug === true;
 preferences.performanceDebug = preferences.performanceDebug === true;
@@ -239,6 +246,7 @@ let outputBusy = false;
 let audioOutputsChecked = false;
 let outputStatus = "正在检查本机音频输出…";
 const player = new MusicPlayer({
+  playMode: preferences.playMode,
   volume: preferences.volume,
   songTransitionMode: preferences.songTransition,
   bgmEnabled: preferences.bgm,
@@ -264,7 +272,7 @@ stage.innerHTML = `
       <button data-action="search" aria-label="搜索">${icons.search}<span>搜索</span></button>
       <div class="theme-switch" aria-label="主题">${(["day", "night"] as Theme[]).map((t) => `<button data-theme="${t}" aria-label="${themeNames[t]}主题" aria-pressed="${preferences.theme === t}"><i class="theme-dot ${t}"></i><span>${themeNames[t]}</span></button>`).join("")}</div>
       <button data-action="settings" class="icon-button" aria-label="播放与画质设置">${icons.settings}</button>
-      <div class="minimal-transport" role="group" aria-label="音乐播放"><button type="button" data-action="locate-playing" id="transport-track" class="transport-track" aria-label="定位当前歌曲" aria-hidden="true" disabled><span id="transport-track-label"></span></button><button data-action="play-pause" id="play-pause" aria-label="播放" aria-pressed="false"><span class="transport-glyph transport-play" aria-hidden="true">${icons.play}</span><span class="transport-glyph transport-pause" aria-hidden="true">${icons.pause}</span></button><button data-action="stop" id="stop-playback" aria-label="停止">${icons.stop}</button></div>
+      <div class="minimal-transport" role="group" aria-label="音乐播放"><button type="button" data-action="locate-playing" id="transport-track" class="transport-track" aria-label="定位当前歌曲" aria-hidden="true" disabled><span id="transport-track-label"></span></button><button data-action="play-pause" id="play-pause" aria-label="播放" aria-pressed="false"><span class="transport-glyph transport-play" aria-hidden="true">${icons.play}</span><span class="transport-glyph transport-pause" aria-hidden="true">${icons.pause}</span></button><button data-action="stop" id="stop-playback" aria-label="停止">${icons.stop}</button><button data-action="cycle-play-mode" id="play-mode" aria-label="播放模式：列表循环" title="列表循环">${icons.loop}</button></div>
     </nav>
   </header>
   <div id="library-status" class="library-status"><i></i><span>正在读取本地音乐索引</span></div>
@@ -286,6 +294,7 @@ stage.innerHTML = `
           `<button class="open-album" data-action="play-selected">播放 <span>▶</span></button>
        <button class="open-album callout-minor" data-action="open">打开专辑 <span>↗</span></button>`
         : `<button class="open-album" data-action="open">打开专辑 <span>↗</span></button>`}
+       <button class="open-album callout-minor" data-action="lyrics">歌词 <span>♪</span></button>
     </div>
     <div class="music-navigation">
       <div class="music-counter"><span class="music-eyebrow">ALBUM / SELECT</span><div><b id="selection-number">01</b><span>/ <i id="selection-total">00</i></span></div></div>
@@ -299,11 +308,31 @@ stage.innerHTML = `
     <div class="card-caption"><span id="detail-card-id"></span><small>拖动卡片，查看完整封面</small></div>
     <article id="album-detail-content" tabindex="-1"></article>
   </section>
+  <section id="music-lyrics" class="music-lyrics" aria-label="歌词" hidden>
+    <button class="music-back" data-action="lyrics-back">← 返回专辑 <kbd>ESC</kbd></button>
+    <div class="lyrics-card">
+      <div class="lyrics-art"><img id="lyrics-cover" alt="" decoding="async"></div>
+      <div class="lyrics-body">
+        <header class="lyrics-head"><span class="lyrics-eyebrow">LYRICS</span><span class="lyrics-source" id="lyrics-source">EMBEDDED</span></header>
+        <ol class="lyrics-lines" id="lyrics-lines" tabindex="0" aria-label="歌词"></ol>
+        <p class="lyrics-empty" id="lyrics-empty">这首没有带时间轴的歌词。</p>
+      </div>
+    </div>
+    <div class="lyrics-album">
+      <strong id="lyrics-title"></strong>
+      <span id="lyrics-artist"></span>
+      <span id="lyrics-meta"></span>
+    </div>
+  </section>
   <div id="music-empty" class="music-empty" hidden><small>YOUR PRIVATE COLLECTION</small><h1>让音乐进入这座档案馆。</h1><p>选择本地音乐文件夹，专辑封面会出现在每一张卡片上。</p><button data-action="library">设置音乐文件夹 ↗</button><button data-action="demo" class="subtle">先查看演示封面</button></div>
   <div class="music-bottomline"><span>LOCAL COLLECTION <i>·</i> <span id="library-count">0 ALBUMS</span></span><span id="runtime-info">THREE.JS / LOCAL / V${appVersion}</span></div>
   <div id="music-panel-root"></div><div id="music-toast" role="status" aria-live="polite"></div>
   <div id="music-loading"><span class="loading-orbit"></span><strong>OPENING THE ARCHIVE</strong><small>正在载入三维专辑架</small></div>
 `;
+const lyricsView = new LyricsView(
+  document.querySelector("#music-lyrics") as HTMLElement,
+  document.querySelector("#lyrics-lines") as HTMLElement,
+);
 const titleMotion = setupMusicTitleLayout(stage);
 const textMotion = setupMusicTextMotion(stage);
 // Keep the previous navigation available while the ruler version is on trial.
@@ -540,6 +569,22 @@ function updateOverview() {
 }
 function savePrefs() {
   save("rhine-music-preferences", preferences);
+}
+const playModeViews: Record<MusicPlayMode, { label: string; icon: string }> = {
+  list: { label: "列表循环", icon: icons.loop },
+  one: { label: "单曲循环", icon: icons.single },
+  shuffle: { label: "随机播放", icon: icons.shuffle },
+};
+/** 传输栏按钮跟着播放器状态走，不单独存一份，避免两处不一致。 */
+function syncPlayModeButton() {
+  const button = $("#play-mode");
+  if (!button) return;
+  const mode = normalizeMusicPlayMode(player.state.playMode);
+  const view = playModeViews[mode];
+  button.innerHTML = view.icon;
+  button.dataset.mode = mode;
+  button.title = view.label;
+  button.setAttribute("aria-label", `播放模式：${view.label}`);
 }
 async function copyPerformanceReport() {
   const host = $("#three-scene");
@@ -1024,8 +1069,52 @@ function stepGenre(direction: number) {
     row: target.row,
   });
 }
+let lyricsOpen = false;
+let lyricsHideTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** 卡片外侧的专辑信息与封面，跟当前选中项走。 */
+function syncLyricsChrome() {
+  const album = currentAlbum();
+  const track = player.state.currentTrack;
+  const image = document.querySelector<HTMLImageElement>("#lyrics-cover");
+  if (image) {
+    image.src = album?.coverUrl ?? "";
+    image.alt = album?.title ?? "";
+  }
+  $("#lyrics-title").textContent = track?.title ?? album?.title ?? "";
+  $("#lyrics-artist").textContent = album?.artist ?? "";
+  $("#lyrics-meta").textContent = album
+    ? ["MUSIC ARCHIVE", album.title, track?.format ?? ""].filter(Boolean).join("  /  ")
+    : "";
+}
+
+function openLyrics() {
+  const album = currentAlbum();
+  const section = $("#music-lyrics") as HTMLElement;
+  if (!album || !section) return;
+  if (overview) setOverview(false, false);
+  syncLyricsChrome();
+  clearTimeout(lyricsHideTimer);
+  section.hidden = false;
+  requestAnimationFrame(() => { section.dataset.open = "true"; });
+  lyricsOpen = true;
+  const track = player.state.currentTrack ?? album.tracks[0];
+  if (track) void lyricsView.load(track.id, track.title, track.artist);
+}
+
+function closeLyrics() {
+  if (!lyricsOpen) return;
+  lyricsOpen = false;
+  const section = $("#music-lyrics") as HTMLElement;
+  if (!section) return;
+  section.dataset.open = "false";
+  clearTimeout(lyricsHideTimer);
+  lyricsHideTimer = setTimeout(() => { if (!lyricsOpen) section.hidden = true; }, 320);
+}
+
 function setMode(next: "archive" | "detail") {
   if (boot?.active) return;
+  closeLyrics();
   if (next === "archive") cancelTrackReveal();
   if (libraryRebuilding) { libraryIntent = { mode: next }; syncAlbumNavigation(); return; }
   if (next === "detail") {
@@ -1405,6 +1494,14 @@ player.subscribe((state) => {
   const titleVisible = !!state.currentTrack &&
     (state.transport === "playing" || state.transport === "paused" || state.transport === "loading");
   transportTitleMotion.update(state.currentTrack?.title ?? "", titleVisible);
+  syncPlayModeButton();
+  if (lyricsOpen) {
+    lyricsView.sync(state.currentTime);
+    syncLyricsChrome();
+    const album = currentAlbum();
+    const track = state.currentTrack;
+    if (album && track) void lyricsView.load(track.id, track.title, track.artist);
+  }
   $("#play-pause").setAttribute("aria-pressed", String(state.playing));
   $("#play-pause").setAttribute(
     "aria-label",
@@ -2031,9 +2128,27 @@ document.addEventListener("click", (e) => {
     case "open":
       setMode("detail");
       break;
+    case "cycle-play-mode": {
+      // 三态轮转；顺序固定为 列表 → 单曲 → 随机。
+      const cycle: MusicPlayMode[] = ["list", "one", "shuffle"];
+      const mode = normalizeMusicPlayMode(player.state.playMode);
+      const next = cycle[(cycle.indexOf(mode) + 1) % cycle.length];
+      preferences.playMode = next;
+      savePrefs();
+      player.setPlayMode(next);
+      syncPlayModeButton();
+      break;
+    }
     case "play-selected":
       // 按歌曲排列：直接播选中的那首（playAlbum 会优先用 record.track）。
       playAlbum();
+      break;
+    case "lyrics":
+      if (lyricsOpen) closeLyrics();
+      else openLyrics();
+      break;
+    case "lyrics-back":
+      closeLyrics();
       break;
     case "back":
       setMode("archive");
