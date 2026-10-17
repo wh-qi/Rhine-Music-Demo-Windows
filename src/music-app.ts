@@ -110,6 +110,7 @@ const preferences = {
     theme: "day" as Theme,
     sortMode: "genre" as MusicSortMode,
     playMode: "list" as MusicPlayMode,
+    lyricsQueueOpen: true,
     arrayMode: "filled" as MusicArrayMode,
     rememberColumnPosition: true,
     audioBackend: "browser" as "browser" | "coreaudio",
@@ -173,6 +174,7 @@ if (!Object.hasOwn(qualityPresets, preferences.quality))
 if (!["genre", "artist", "album", "track"].includes(preferences.sortMode))
   preferences.sortMode = "genre";
 preferences.playMode = normalizeMusicPlayMode(preferences.playMode);
+preferences.lyricsQueueOpen = preferences.lyricsQueueOpen !== false;
 preferences.developerMode = preferences.developerMode === true;
 preferences.motionDebug = preferences.motionDebug === true;
 preferences.performanceDebug = preferences.performanceDebug === true;
@@ -337,7 +339,9 @@ stage.innerHTML = `
       <aside class="lyrics-queue" aria-label="播放列表">
         <header class="lyrics-queue-head"><span>播放列表</span><small id="lyrics-queue-count"></small></header>
         <ol class="lyrics-queue-list" id="lyrics-queue-list"></ol>
+        <button type="button" class="lyrics-queue-toggle" data-action="lyrics-queue-toggle">收起列表 <span aria-hidden="true">⌃</span></button>
       </aside>
+      <button type="button" class="lyrics-queue-open" data-action="lyrics-queue-toggle" aria-label="展开播放列表">≡</button>
     </div>
     <div class="lyrics-transport">
       <div class="lyrics-transport-thumb"><img id="lyrics-thumb" alt=""></div>
@@ -1188,19 +1192,25 @@ function renderLyricsQueue(album: MusicAlbum | undefined, currentId: string | un
   const list = $("#lyrics-queue-list");
   const count = $("#lyrics-queue-count");
   if (!album || !list) return;
-  if (count) count.textContent = `${album.tracks.length} 首`;
-  if (list.dataset.album === album.id && list.dataset.current === currentId) return;
-  list.dataset.album = album.id;
-  list.dataset.current = currentId ?? "";
+  // 按歌曲排列时单位是单曲，列表给全库；其余模式给当前专辑的曲目。
+  const everyTrack = preferences.sortMode === "track";
+  const entries: { track: MusicAlbum["tracks"][number]; album: MusicAlbum }[] = everyTrack
+    ? albums.flatMap((entry) => entry.tracks.map((track) => ({ track, album: entry })))
+    : album.tracks.map((track) => ({ track, album }));
+  const key = `${everyTrack ? "all" : album.id}|${currentId ?? ""}`;
+  if (count) count.textContent = `${entries.length} 首`;
+  if (list.dataset.key === key) return;
+  list.dataset.key = key;
   const fragment = document.createDocumentFragment();
-  album.tracks.forEach((track, index) => {
+  entries.forEach((entry, index) => {
     const item = document.createElement("li");
     item.className = "lyrics-queue-item";
-    item.dataset.track = track.id;
-    if (track.id === currentId) item.dataset.active = "true";
+    item.dataset.track = entry.track.id;
+    item.dataset.album = entry.album.id;
+    if (entry.track.id === currentId) item.dataset.active = "true";
     item.innerHTML = `<span class="lyrics-queue-index">${String(index + 1).padStart(2, "0")}</span><span class="lyrics-queue-text"></span><span class="lyrics-queue-time"></span>`;
-    (item.children[1] as HTMLElement).textContent = track.title;
-    (item.children[2] as HTMLElement).textContent = time(track.duration || 0);
+    (item.children[1] as HTMLElement).textContent = entry.track.title;
+    (item.children[2] as HTMLElement).textContent = time(entry.track.duration || 0);
     fragment.append(item);
   });
   list.replaceChildren(fragment);
@@ -1216,6 +1226,7 @@ function openLyrics() {
   section.hidden = false;
   // 专辑架自己的导航与按键提示要让位，否则会从卡片下方露出来。
   stage.dataset.lyrics = "true";
+  section.dataset.queue = preferences.lyricsQueueOpen ? "open" : "closed";
   requestAnimationFrame(() => { section.dataset.open = "true"; });
   lyricsOpen = true;
   const track = player.state.currentTrack ?? album.tracks[0];
@@ -2136,8 +2147,9 @@ function playAlbum(id?: string) {
 // 点击歌词行跳到该句。放在 document 监听之前，先处理这一层。
 $("#lyrics-queue-list").addEventListener("click", (event) => {
   const item = (event.target as HTMLElement).closest<HTMLElement>(".lyrics-queue-item");
-  const album = currentAlbum();
   const id = item?.dataset.track;
+  // 按歌曲模式下条目可能来自别的专辑，队列要用它自己那张专辑。
+  const album = albums.find((entry) => entry.id === item?.dataset.album) ?? currentAlbum();
   if (album && id) void player.play(id, album.tracks);
 });
 $("#lyrics-lines").addEventListener("click", (event) => {
@@ -2282,6 +2294,14 @@ document.addEventListener("click", (e) => {
       if (lyricsOpen) closeLyrics();
       else openLyrics();
       break;
+    case "lyrics-queue-toggle": {
+      const section = $("#music-lyrics") as HTMLElement;
+      const closed = section.dataset.queue === "closed";
+      section.dataset.queue = closed ? "open" : "closed";
+      preferences.lyricsQueueOpen = closed;
+      savePrefs();
+      break;
+    }
     case "lyrics-back":
       closeLyrics();
       break;

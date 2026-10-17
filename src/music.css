@@ -2456,6 +2456,40 @@
 /* 减少动效：跳过淡入淡出。 */
 .music-app[data-reduced="true"] .lyrics-backdrop img, .music-app[data-reduced="true"] .lyrics-backdrop { transition: none; }
 
+/* 收起状态：侧栏让位给卡片，右上角留一个展开钮。 */
+.lyrics-queue-toggle {
+  flex: none;
+  margin-top: 8px;
+  padding: 6px 0 2px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+.lyrics-queue-toggle:hover { color: var(--ink); }
+.lyrics-queue-open {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 46px;
+  border-radius: 12px 0 0 12px;
+  border: 0;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  color: var(--muted);
+  font-size: 15px;
+  cursor: pointer;
+  z-index: 2;
+}
+.music-lyrics[data-queue="closed"] .lyrics-stage { grid-template-columns: minmax(0, 1fr); }
+.music-lyrics[data-queue="closed"] .lyrics-queue { display: none; }
+.music-lyrics[data-queue="closed"] .lyrics-queue-open { display: block; }
+
 /* ── 液态玻璃：虚化背后的架子，而不是盖一张不透明的图 ─────── */
 /* backdrop-filter 会采样它下方的画布，所以架子会变成柔和色块透出来，
    这才是参考图那种「玻璃后面还有东西」的效果。 */
