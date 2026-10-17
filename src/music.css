@@ -2247,6 +2247,74 @@
   transition: opacity 0.32s ease, transform 0.32s ease;
   pointer-events: none;
 }
+/* ── 播放列表侧栏 ─────────────────────────────────────────── */
+.lyrics-queue {
+  /* 它是 .music-lyrics 的 flex 子项，默认会被高大的卡片挤扁到只剩标题栏。 */
+  flex: none;
+  min-height: 108px;
+  width: min(1180px, 100%);
+  max-height: 30vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--veil);
+  backdrop-filter: blur(18px);
+  padding: 14px 20px;
+  overflow: hidden;
+}
+.lyrics-queue-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.lyrics-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  scrollbar-width: none;
+}
+.lyrics-queue-list::-webkit-scrollbar { display: none; }
+.lyrics-queue-item {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 8px;
+}
+.lyrics-queue-item:hover { background: rgba(127, 127, 127, 0.08); }
+.lyrics-queue-item[data-active="true"] { color: var(--ink); }
+.lyrics-queue-item[data-active="true"] .lyrics-queue-index { color: var(--accent); }
+.lyrics-queue-index, .lyrics-queue-time { font-variant-numeric: tabular-nums; font-size: 10px; opacity: 0.7; }
+.lyrics-queue-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 竖屏：卡片改成单列，侧栏高度收窄。 */
+.music-app[data-layout="portrait"] .lyrics-card {
+  grid-template-columns: 1fr;
+  gap: 18px;
+  padding: 22px;
+}
+.music-app[data-layout="portrait"] .lyrics-art { max-width: 46%; }
+.music-app[data-layout="portrait"] .lyrics-line[data-active="true"] { font-size: 18px; }
+.music-app[data-layout="portrait"] .lyrics-queue { max-height: 22vh; }
+.music-app[data-layout="portrait"] .music-lyrics { padding: 80px 5vw 120px; }
+/* 超宽屏：卡片放宽，避免两侧空太多。 */
+@media (min-aspect-ratio: 21/9) {
+  .lyrics-card, .lyrics-queue { width: min(1480px, 100%); }
+}
+
 /* 歌词界面打开时，专辑架自己的导航让位，别从卡片下方露出来。 */
 .music-app[data-lyrics="true"] .music-navigation,
 .music-app[data-lyrics="true"] .music-keyhint,

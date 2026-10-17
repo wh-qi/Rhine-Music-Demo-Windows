@@ -318,6 +318,10 @@ stage.innerHTML = `
         <p class="lyrics-empty" id="lyrics-empty">这首没有带时间轴的歌词。</p>
       </div>
     </div>
+    <aside class="lyrics-queue" aria-label="播放列表">
+      <header class="lyrics-queue-head"><span>播放列表</span><small id="lyrics-queue-count"></small></header>
+      <ol class="lyrics-queue-list" id="lyrics-queue-list"></ol>
+    </aside>
     <div class="lyrics-album">
       <strong id="lyrics-title"></strong>
       <span id="lyrics-artist"></span>
@@ -1086,6 +1090,30 @@ function syncLyricsChrome() {
   $("#lyrics-meta").textContent = album
     ? ["MUSIC ARCHIVE", album.title, track?.format ?? ""].filter(Boolean).join("  /  ")
     : "";
+  renderLyricsQueue(album, track?.id);
+}
+
+/** 侧栏播放列表：当前曲目高亮，点击直接换曲。 */
+function renderLyricsQueue(album: MusicAlbum | undefined, currentId: string | undefined) {
+  const list = $("#lyrics-queue-list");
+  const count = $("#lyrics-queue-count");
+  if (!album || !list) return;
+  if (count) count.textContent = `${album.tracks.length} 首`;
+  if (list.dataset.album === album.id && list.dataset.current === currentId) return;
+  list.dataset.album = album.id;
+  list.dataset.current = currentId ?? "";
+  const fragment = document.createDocumentFragment();
+  album.tracks.forEach((track, index) => {
+    const item = document.createElement("li");
+    item.className = "lyrics-queue-item";
+    item.dataset.track = track.id;
+    if (track.id === currentId) item.dataset.active = "true";
+    item.innerHTML = `<span class="lyrics-queue-index">${String(index + 1).padStart(2, "0")}</span><span class="lyrics-queue-text"></span><span class="lyrics-queue-time"></span>`;
+    (item.children[1] as HTMLElement).textContent = track.title;
+    (item.children[2] as HTMLElement).textContent = time(track.duration || 0);
+    fragment.append(item);
+  });
+  list.replaceChildren(fragment);
 }
 
 function openLyrics() {
@@ -2013,6 +2041,19 @@ function playAlbum(id?: string) {
   const selectedTrack = records[selected]?.track?.id;
   void player.play(id || selectedTrack || a.tracks[0].id, a.tracks);
 }
+
+// 点击歌词行跳到该句。放在 document 监听之前，先处理这一层。
+$("#lyrics-queue-list").addEventListener("click", (event) => {
+  const item = (event.target as HTMLElement).closest<HTMLElement>(".lyrics-queue-item");
+  const album = currentAlbum();
+  const id = item?.dataset.track;
+  if (album && id) void player.play(id, album.tracks);
+});
+$("#lyrics-lines").addEventListener("click", (event) => {
+  const ms = lyricsView.lineAt(event.target as HTMLElement);
+  if (ms === null) return;
+  player.seek(ms / 1000);
+});
 
 document.addEventListener("click", (e) => {
   if (boot?.active) return;
