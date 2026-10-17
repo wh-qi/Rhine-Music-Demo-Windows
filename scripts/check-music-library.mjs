@@ -3,8 +3,40 @@ import assert from 'node:assert/strict'
 import path from 'node:path'
 import os from 'node:os'
 import { promises as fs } from 'node:fs'
-import { MusicLibraryStore } from './music-library.mjs'
+import { MusicLibraryStore, clampLyrics, parseLrcText, readLyrics } from './music-library.mjs'
 import { createMusicServer, parseRange } from './music-server.mjs'
+test('LRC 文本解析：时间戳、一行多戳、元信息行', () => {
+  // 元信息行没有时间戳，必须丢弃。
+  assert.deepEqual(parseLrcText('[ar:某歌手]\n[ti:某歌]'), [])
+  // 厘秒 .xx 按三位补零成毫秒；纯秒也支持。
+  assert.deepEqual(parseLrcText('[00:12.34]第一句'), [{ ms: 12340, text: '第一句' }])
+  assert.deepEqual(parseLrcText('[01:05]第二句'), [{ ms: 65000, text: '第二句' }])
+  // 一行多个时间戳展开成多条，并按时间排序。
+  assert.deepEqual(parseLrcText('[00:20.00][00:10.00]重复句'), [
+    { ms: 10000, text: '重复句' },
+    { ms: 20000, text: '重复句' },
+  ])
+  // 纯时间戳行（没有正文）跳过。
+  assert.deepEqual(parseLrcText('[00:00.00]\n[00:01.00]有词'), [{ ms: 1000, text: '有词' }])
+})
+
+test('歌词归一：优先同步标签，其次 LRC 文本，无时间轴返回 undefined', () => {
+  const sync = readLyrics([{ syncText: [{ timestamp: 0, text: '甲' }, { timestamp: 2000, text: '乙' }] }])
+  assert.deepEqual(sync, [{ ms: 0, text: '甲' }, { ms: 2000, text: '乙' }])
+  const lrc = readLyrics([{ text: '[00:01.00]丙' }])
+  assert.deepEqual(lrc, [{ ms: 1000, text: '丙' }])
+  assert.equal(readLyrics([{ text: '没有时间戳的纯文本' }]), undefined)
+  assert.equal(readLyrics(undefined), undefined)
+})
+
+test('歌词裁剪：丢弃越界的结束标记，保留正常时间轴', () => {
+  const lines = [{ ms: 0, text: '甲' }, { ms: 30000, text: '乙' }, { ms: 59940000, text: '结束' }]
+  assert.deepEqual(clampLyrics(lines, 60), [{ ms: 0, text: '甲' }, { ms: 30000, text: '乙' }])
+  // 未知时长时原样返回。
+  assert.deepEqual(clampLyrics(lines, 0), lines)
+  // 全部越界时返回 undefined，避免空歌词进索引。
+  assert.equal(clampLyrics([{ ms: 999999, text: '甲' }], 10), undefined)
+})
 
 async function fixture(t, options = {}) {
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'rhine-music-test-'))
@@ -110,7 +142,7 @@ test('incremental scan detects additions/removals, caches unchanged tags, and pr
   assert.equal(store.snapshot().albums[0].offline, false)
 })
 
-test('v3 metadata upgrades from the saved index without source reparsing and derives v4 playback fields', async (t) => {
+test('v3 metadata upgrades from the saved index without source reparsing and derives playback fields', async (t) => {
   let reads = 0
   const metadataParser = async (file) => {
     reads += 1
@@ -130,9 +162,10 @@ test('v3 metadata upgrades from the saved index without source reparsing and der
   const restored = await new MusicLibraryStore({ dataDir: store.dataDir, metadataParser }).init()
   assert.deepEqual(JSON.parse(JSON.stringify(restored.snapshot().albums)), before.albums, 'cached library remains available before the startup scan')
   await restored.scan()
-  assert.equal(reads, 0, 'v3 contains the same parsed tag schema; do not re-read source tags merely for v4 routes')
+  assert.equal(reads, 0, 'v3 contains the same parsed tag schema; do not re-read source tags merely for derived playback routes')
   assert.deepEqual(JSON.parse(JSON.stringify(restored.snapshot().albums)), before.albums, 'technical fields, local credits and album identity survive migration')
-  assert.ok(restored.index.albums[0].tracks.every((track) => track._metadataVersion === 4))
+  // 版本号随 METADATA_VERSION 走：v3 记录升级到当前版本，但不触发源文件重读。
+  assert.ok(restored.index.albums[0].tracks.every((track) => track._metadataVersion === 5))
   const snapshot = restored.snapshot()
   const [flac, dsd] = snapshot.albums[0].tracks
   assert.equal(flac.decodedAudioUrl, `/api/decoded-audio/${flac.id}`)

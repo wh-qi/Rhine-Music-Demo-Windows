@@ -124,6 +124,13 @@ async function routeApi(request, url, response, { store, decoder, output, distDi
     }
     return json(response, 200, { decoderAvailable: !!decoder.ffmpeg, decoder: decoder.version ?? null, decoderError: decoder.error ?? null, nativeAvailable: !!decoder.ffmpeg && nativePlatform && !nativeError, nativeError, devices: [{ id: 'default', name: '系统默认输出' }, ...devices], mode: 'shared', formats: ['APE', 'WAV', 'FLAC', 'ALAC', 'AIFF', 'MP3', 'AAC', 'OGG', 'OPUS', 'WV', 'DSF', 'DFF'], dsdPlayback: 'pcm', nativeFormat })
   }
+  // 歌词按需拉取：不进 /api/library，避免索引体积翻倍。
+  const lyricsRoute = /^\/api\/lyrics\/([a-zA-Z0-9-]+)$/.exec(route)
+  if (lyricsRoute && get) {
+    const lines = store.trackLyrics(lyricsRoute[1])
+    if (!lines?.length) return json(response, 404, { error: '这首没有带时间轴的歌词' })
+    return json(response, 200, { trackId: lyricsRoute[1], lines })
+  }
   const prepare = /^\/api\/audio\/prepare\/([a-zA-Z0-9-]+)$/.exec(route)
   const decodedAudio = /^\/api\/decoded-audio\/([a-zA-Z0-9-]+)$/.exec(route)
   if ((prepare && request.method === 'POST') || (decodedAudio && get)) {

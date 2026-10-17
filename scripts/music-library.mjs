@@ -12,13 +12,69 @@ const MBID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const unique = (items) => [...new Set(items.filter(Boolean))]
 const hash = (value) => createHash('sha256').update(value).digest('hex').slice(0, 24)
 const text = (value) => typeof value === 'string' ? value.trim() : ''
+/**
+ * LRC 文本 → [{ ms, text }]。
+ * 接受一行多个时间戳（[00:12.34][01:20.00]同一句），丢弃 [ar:]/[ti:] 这类元信息行。
+ * 时间戳精度按 LRC 惯例：.xx 是厘秒，.xxx 是毫秒。
+ */
+export function parseLrcText(input) {
+  const lines = []
+  for (const raw of String(input).split(/\r?\n/)) {
+    const stamps = [...raw.matchAll(/\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g)]
+    if (!stamps.length) continue
+    // 去掉所有时间戳后剩下的才是这一句的正文；空句（纯时间戳行）跳过。
+    const value = text(raw.replace(/\[[^\]]*\]/g, ''))
+    if (!value) continue
+    for (const stamp of stamps) {
+      const fraction = stamp[3] ? Number(`0.${stamp[3].padEnd(3, '0').slice(0, 3)}`) : 0
+      lines.push({ ms: Math.round((Number(stamp[1]) * 60 + Number(stamp[2]) + fraction) * 1000), text: value })
+    }
+  }
+  return lines.sort((a, b) => a.ms - b.ms)
+}
+
+/**
+ * common.lyrics 归一化：优先同步标签（ID3 SYLT，timestamp 单位毫秒），其次解析 LRC 文本。
+ * 没有时间轴时返回 undefined——无时间轴的歌词做不出逐行高亮，不如不存。
+ */
+export function readLyrics(tags, durationSeconds = 0) {
+  if (!Array.isArray(tags)) return undefined
+  for (const tag of tags) {
+    const sync = Array.isArray(tag?.syncText) ? tag.syncText : []
+    if (sync.length) {
+      const lines = sync
+        .map((line) => ({ ms: Math.max(0, Math.round(Number(line?.timestamp) || 0)), text: text(line?.text) }))
+        .filter((line) => line.text)
+      if (lines.length) return lines.sort((a, b) => a.ms - b.ms)
+    }
+    if (typeof tag?.text === 'string') {
+      const lines = parseLrcText(tag.text)
+      if (lines.length) return lines
+    }
+  }
+  return undefined
+}
+
+/**
+ * 丢掉越界的时间轴。有些 LRC 用 [999:00.00] 之类的标记当结束符，
+ * 不裁掉的话当前行计算会一直停在最后一句。留 5 秒余量容忍末尾舍入。
+ */
+export function clampLyrics(lines, durationSeconds) {
+  if (!lines?.length) return undefined
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return lines
+  const limit = durationSeconds * 1000 + 5000
+  const kept = lines.filter((line) => line.ms <= limit)
+  return kept.length ? kept : undefined
+}
 const normalized = (value) => text(value).normalize('NFKC').toLocaleLowerCase().replace(/[\s\p{P}\p{S}]/gu, '')
 const exists = async (file) => { try { await fs.access(file); return true } catch { return false } }
 const timestamp = () => new Date().toISOString()
-const METADATA_VERSION = 4
+const METADATA_VERSION = 5
 // v4 adds indexable extensions and derives PCM routes in snapshot(); tag extraction
 // is unchanged from v3. Reuse those parsed fields without rereading every source.
 // Older schemas still need the metadata/credits migration introduced in v3.
+// v3 记录视为字段完整（v4 只是由 snapshot() 派生播放字段），升级时不重扫源文件。
+// v5 新增内嵌歌词：v4 记录会整体重扫一次以取到 _lyrics；v3 记录沿用旧行为、无歌词。
 const COMPATIBLE_METADATA_VERSIONS = new Set([3, METADATA_VERSION])
 const creditsIdentity = (album) => hash(JSON.stringify(album.tracks.map((track) => [track.id, track.title, track.artist, track.duration, track._common?.album, track._fingerprint])))
 
@@ -231,7 +287,7 @@ export class MusicLibraryStore {
         introduction: album.introduction,
         genreId, rawGenres: unique([...(album._onlineGenres ?? []), ...(album._localGenres ?? [])]),
         folder: album.folder, coverUrl: album._cover ? `/api/artwork/${album.id}?v=${album._cover.version}` : undefined,
-        tracks: album.tracks.map(({ _path, _fingerprint, _common, _embeddedCover, _metadataVersion, ...track }) => ({ ...track, decodedAudioUrl: `/api/decoded-audio/${track.id}`, localDecodable: true })),
+        tracks: album.tracks.map(({ _path, _fingerprint, _common, _embeddedCover, _metadataVersion, _lyrics, ...track }) => ({ ...track, decodedAudioUrl: `/api/decoded-audio/${track.id}`, localDecodable: true })),
         producers: album.producers ?? [], offline: !!album.offline,
         creditsLookup: album.creditsLookup,
         online: album.online ?? { status: 'unqueried' },
@@ -366,6 +422,7 @@ export class MusicLibraryStore {
         lossless: typeof metadata.format?.lossless === 'boolean' ? metadata.format.lossless : undefined,
         browserPlayable: BROWSER_EXTENSIONS.has(extension), audioUrl: `/api/audio/${trackId}`,
         relativePath: path.relative(root, file),
+        _lyrics: clampLyrics(readLyrics(common.lyrics), metadata.format?.duration),
         _path: file, _fingerprint: fingerprint, _metadataVersion: METADATA_VERSION,
         _common: {
           album: text(common.album), albumartist: text(common.albumartist), year: numberOrUndefined(common.year),
@@ -408,6 +465,16 @@ export class MusicLibraryStore {
       _root: root, _cover: cover, _localGenres: localGenres,
       _onlineGenres: unchangedIdentity ? previous._onlineGenres ?? [] : [],
     }
+  }
+
+  /** 按曲目 id 取归一化歌词；无歌词返回 null。走同一个根目录边界检查。 */
+  trackLyrics(id) {
+    for (const album of this.index.albums) {
+      if (!this.config.roots.includes(album._root)) continue
+      const track = album.tracks.find((entry) => entry.id === id)
+      if (track) return track._lyrics ?? null
+    }
+    return null
   }
 
   trackFile(id) {
