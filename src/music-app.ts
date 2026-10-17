@@ -310,22 +310,45 @@ stage.innerHTML = `
   </section>
   <section id="music-lyrics" class="music-lyrics" aria-label="歌词" hidden>
     <button class="music-back" data-action="lyrics-back">← 返回专辑 <kbd>ESC</kbd></button>
-    <div class="lyrics-card">
-      <div class="lyrics-art"><img id="lyrics-cover" alt="" decoding="async"></div>
-      <div class="lyrics-body">
-        <header class="lyrics-head"><span class="lyrics-eyebrow">LYRICS</span><span class="lyrics-source" id="lyrics-source">EMBEDDED</span></header>
-        <ol class="lyrics-lines" id="lyrics-lines" tabindex="0" aria-label="歌词"></ol>
-        <p class="lyrics-empty" id="lyrics-empty">这首没有带时间轴的歌词。</p>
-      </div>
+    <div class="lyrics-stage">
+      <article class="lyrics-card">
+        <div class="lyrics-left">
+          <div class="lyrics-art"><img id="lyrics-cover" alt="" decoding="async"></div>
+          <h1 id="lyrics-title"></h1>
+          <p id="lyrics-artist" class="lyrics-artist"></p>
+          <p id="lyrics-meta" class="lyrics-meta"></p>
+          <div class="lyrics-pager">
+            <small class="lyrics-pager-label">ALBUM / SELECT</small>
+            <div class="lyrics-pager-row"><strong id="lyrics-index">--</strong><span>/ <i id="lyrics-total">--</i></span>
+              <span class="lyrics-pager-arrows"><button type="button" data-action="prev" aria-label="上一个">‹</button><button type="button" data-action="next" aria-label="下一个">›</button></span></div>
+          </div>
+        </div>
+        <div class="lyrics-right">
+          <header class="lyrics-head"><span class="lyrics-eyebrow">LYRICS</span>
+            <span class="lyrics-tools"><span class="lyrics-source" id="lyrics-source">EMBEDDED</span>
+              <button type="button" class="lyrics-tool" aria-label="歌词来源（暂未开放）" disabled>LRC</button>
+              <button type="button" class="lyrics-tool" aria-label="更多（暂未开放）" disabled>≡</button></span></header>
+          <ol class="lyrics-lines" id="lyrics-lines" tabindex="0" aria-label="歌词"></ol>
+          <p class="lyrics-empty" id="lyrics-empty">这首没有带时间轴的歌词。</p>
+        </div>
+      </article>
+      <aside class="lyrics-queue" aria-label="播放列表">
+        <header class="lyrics-queue-head"><span>播放列表</span><small id="lyrics-queue-count"></small></header>
+        <ol class="lyrics-queue-list" id="lyrics-queue-list"></ol>
+      </aside>
     </div>
-    <aside class="lyrics-queue" aria-label="播放列表">
-      <header class="lyrics-queue-head"><span>播放列表</span><small id="lyrics-queue-count"></small></header>
-      <ol class="lyrics-queue-list" id="lyrics-queue-list"></ol>
-    </aside>
-    <div class="lyrics-album">
-      <strong id="lyrics-title"></strong>
-      <span id="lyrics-artist"></span>
-      <span id="lyrics-meta"></span>
+    <div class="lyrics-transport">
+      <div class="lyrics-transport-thumb"><img id="lyrics-thumb" alt=""></div>
+      <div class="lyrics-transport-text"><strong id="lyrics-now-title"></strong><small id="lyrics-now-artist"></small></div>
+      <span class="lyrics-transport-time" id="lyrics-now-current">00:00</span>
+      <div class="lyrics-progress"><div class="lyrics-progress-fill" id="lyrics-progress-fill"></div></div>
+      <span class="lyrics-transport-time" id="lyrics-now-total">00:00</span>
+      <div class="lyrics-transport-buttons">
+        <button type="button" data-action="cycle-play-mode" class="lyrics-mode" id="lyrics-mode" aria-label="播放模式：列表循环"></button>
+        <button type="button" data-action="prev" aria-label="上一首">‹</button>
+        <button type="button" data-action="play-pause" class="lyrics-play" aria-label="播放">▶</button>
+        <button type="button" data-action="next" aria-label="下一首">›</button>
+      </div>
     </div>
   </section>
   <div id="music-empty" class="music-empty" hidden><small>YOUR PRIVATE COLLECTION</small><h1>让音乐进入这座档案馆。</h1><p>选择本地音乐文件夹，专辑封面会出现在每一张卡片上。</p><button data-action="library">设置音乐文件夹 ↗</button><button data-action="demo" class="subtle">先查看演示封面</button></div>
@@ -1090,7 +1113,39 @@ function syncLyricsChrome() {
   $("#lyrics-meta").textContent = album
     ? ["MUSIC ARCHIVE", album.title, track?.format ?? ""].filter(Boolean).join("  /  ")
     : "";
+  const index = document.querySelector("#lyrics-index");
+  const total = document.querySelector("#lyrics-total");
+  if (index) index.textContent = String(selected + 1).padStart(2, "0");
+  if (total) total.textContent = String(records.length).padStart(2, "0");
+  const thumb = document.querySelector<HTMLImageElement>("#lyrics-thumb");
+  if (thumb) thumb.src = album?.coverUrl ?? "";
   renderLyricsQueue(album, track?.id);
+}
+
+/** 底部传输栏：与顶部那套读同一份播放器状态，不另存一份。 */
+function syncLyricsTransport(state: MusicPlayerState) {
+  const title = document.querySelector("#lyrics-now-title");
+  const artist = document.querySelector("#lyrics-now-artist");
+  if (title) title.textContent = state.currentTrack?.title ?? "";
+  if (artist) artist.textContent = state.currentTrack?.artist ?? "";
+  const current = document.querySelector("#lyrics-now-current");
+  const total = document.querySelector("#lyrics-now-total");
+  if (current) current.textContent = time(state.currentTime);
+  if (total) total.textContent = time(state.duration);
+  const fill = document.querySelector<HTMLElement>("#lyrics-progress-fill");
+  if (fill) fill.style.width = state.duration > 0 ? `${Math.min(100, (state.currentTime / state.duration) * 100)}%` : "0%";
+  const mode = document.querySelector<HTMLElement>("#lyrics-mode");
+  if (mode) {
+    const view = playModeViews[normalizeMusicPlayMode(state.playMode)];
+    mode.innerHTML = view.icon;
+    mode.dataset.mode = state.playMode;
+    mode.setAttribute("aria-label", `播放模式：${view.label}`);
+  }
+  const play = document.querySelector(".lyrics-play");
+  if (play) {
+    play.innerHTML = state.playing ? icons.pause : icons.play;
+    play.setAttribute("aria-label", state.playing ? "暂停" : "播放");
+  }
 }
 
 /** 侧栏播放列表：当前曲目高亮，点击直接换曲。 */
@@ -1528,6 +1583,7 @@ player.subscribe((state) => {
   syncPlayModeButton();
   if (lyricsOpen) {
     lyricsView.sync(state.currentTime);
+    syncLyricsTransport(state);
     syncLyricsChrome();
     const album = currentAlbum();
     const track = state.currentTrack;
