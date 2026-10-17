@@ -2412,10 +2412,8 @@
 .music-lyrics[data-lyrics-state="loading"] .lyrics-lines { opacity: 0.35; }
 
 /* ── 背景漫射：用当前封面铺满整屏做底 ─────────────────────── */
-.music-lyrics {
-  /* 背景层要覆盖整个界面，所以这里改成相对定位的层叠上下文根。 */
-  isolation: isolate;
-}
+/* 注意：这里绝对不能加 isolation: isolate。那会把 backdrop-filter 的采样范围
+   限制在元素内部，玻璃就看不到下面的画布，架子永远透不出来。 */
 .lyrics-backdrop {
   position: absolute;
   inset: 0;
@@ -2447,9 +2445,9 @@
 }
 /* 卡片与传输栏压在背景之上。返回按钮本来就是 absolute，只抬层级、不改定位。 */
 .lyrics-stage, .lyrics-transport { position: relative; z-index: 1; }
-.music-lyrics > .music-back { z-index: 2; top: 74px; left: 42px; }
-/* 给返回按钮让出一行，卡片不要压住它。 */
-.music-lyrics { padding-top: 106px; }
+.music-lyrics > .music-back { z-index: 2; left: 42px; top: 98px; }
+/* 顶部导航占掉约 90px，返回按钮再占一行，卡片从 128px 开始。 */
+.music-lyrics { padding-top: 128px; }
 /* 顶部导航浮在漫射背景之上（参考图也是这个关系），否则会被整屏背景盖掉。 */
 .music-app[data-lyrics="true"] .music-header { z-index: 13; }
 /* 打开时背景轻微放大收束，和卡片的缩放同步。 */
@@ -2457,6 +2455,150 @@
 .music-lyrics[data-open="true"] .lyrics-backdrop { opacity: 1; }
 /* 减少动效：跳过淡入淡出。 */
 .music-app[data-reduced="true"] .lyrics-backdrop img, .music-app[data-reduced="true"] .lyrics-backdrop { transition: none; }
+
+/* ── 液态玻璃：虚化背后的架子，而不是盖一张不透明的图 ─────── */
+/* backdrop-filter 会采样它下方的画布，所以架子会变成柔和色块透出来，
+   这才是参考图那种「玻璃后面还有东西」的效果。 */
+/* backdrop-filter 在这个层叠结构下采样不到 WebGL 画布，改成直接虚化画布本身：
+   这才是参考图里架子失焦的成因，且不依赖合成层行为。 */
+.music-app .three-scene {
+  transition: filter 0.45s ease, transform 0.45s ease;
+}
+.music-app[data-lyrics="true"] .three-scene {
+  filter: blur(26px) saturate(1.3) brightness(1.04);
+  transform: scale(1.06);
+}
+.lyrics-backdrop {
+  background: color-mix(in srgb, var(--surface) 12%, transparent);
+}
+/* 封面只做染色，不能盖住架子。 */
+.lyrics-backdrop img {
+  filter: blur(44px) saturate(1.6);
+  opacity: 0;
+  mix-blend-mode: soft-light;
+}
+.lyrics-backdrop img[data-active="true"] { opacity: 0.32; }
+/* 只留极薄一层主题色，压住过曝。 */
+.lyrics-backdrop::after {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--surface) 2%, transparent),
+    color-mix(in srgb, var(--surface) 10%, transparent));
+}
+/* 卡片：低不透明度 + 强模糊 + 玻璃边缘高光。 */
+.lyrics-card {
+  background: color-mix(in srgb, var(--surface) 38%, transparent);
+  backdrop-filter: blur(28px) saturate(1.22);
+  box-shadow:
+    0 24px 70px rgba(24, 32, 38, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+}
+/* 侧栏与传输栏同一套玻璃语言。 */
+.lyrics-queue {
+  background: color-mix(in srgb, var(--surface) 36%, transparent);
+  backdrop-filter: blur(24px) saturate(1.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+.lyrics-transport {
+  background: color-mix(in srgb, var(--surface) 40%, transparent);
+  backdrop-filter: blur(26px) saturate(1.2);
+  box-shadow: 0 16px 44px rgba(24, 32, 38, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.38);
+}
+/* 玻璃上的当前项更亮一点。 */
+.lyrics-queue-item[data-active="true"] { background: color-mix(in srgb, var(--surface) 62%, transparent); }
+
+/* ── 对齐参考图：色调、字号、比例 ─────────────────────────── */
+.music-lyrics {
+  /* 参考图的歌词与标题是衬线；Windows 上没有思源宋体，退到系统宋体，
+     至少保证是衬线而不是无衬线。 */
+  --lyrics-serif: Georgia, "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", SimSun, serif;
+  padding-top: 104px;
+  padding-bottom: 118px;
+}
+/* 背景更亮更淡，让架子在左侧隐约透出来，别像一块蓝板子。 */
+.lyrics-backdrop img { filter: blur(54px) saturate(1.1) brightness(1.28); }
+.lyrics-backdrop::after {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--surface) 76%, transparent),
+    color-mix(in srgb, var(--surface) 88%, transparent));
+}
+/* 卡片：无边框、大圆角、近乎半透明白。 */
+.lyrics-stage { grid-template-columns: minmax(0, 1fr) minmax(250px, 28%); gap: 20px; }
+.lyrics-card {
+  border: 0;
+  border-radius: 30px;
+  background: color-mix(in srgb, var(--surface) 66%, transparent);
+  backdrop-filter: blur(30px) saturate(1.1);
+  box-shadow: 0 28px 90px rgba(24, 32, 38, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  padding: 30px 34px 22px;
+}
+.lyrics-card .lyrics-art img { border-radius: 10px; }
+/* 标题：参考图是大号粗衬线。 */
+.lyrics-left #lyrics-title {
+  font-family: var(--lyrics-serif);
+  font-size: 29px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 16px 0 2px;
+}
+.lyrics-artist { font-size: 15px; }
+.lyrics-meta { font-size: 10px; letter-spacing: 1.5px; }
+/* 翻页：大数字 + 纯文字箭头，和参考图一致。 */
+.lyrics-pager-arrows button {
+  width: auto; height: auto;
+  border: 0; background: transparent;
+  font-size: 22px; line-height: 1;
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
+}
+/* LYRICS 头：▾ 与长横线。 */
+.lyrics-head::before {
+  content: "▾";
+  font-size: 11px;
+  color: color-mix(in srgb, var(--ink) 45%, transparent);
+  margin-right: 2px;
+}
+/* ▾ / LYRICS / 工具三块不能平分，工具靠右就行。 */
+.lyrics-head { gap: 10px; justify-content: flex-start; align-items: center; }
+.lyrics-tools { margin-left: auto; }
+.lyrics-head .lyrics-eyebrow::after {
+  content: "";
+  display: inline-block;
+  width: 46px;
+  height: 1px;
+  margin-left: 12px;
+  vertical-align: middle;
+  background: color-mix(in srgb, var(--ink) 30%, transparent);
+}
+/* 歌词：非当前行 20px 浅灰，当前行 34px 粗衬线。 */
+.lyrics-lines { padding-top: 26px; }
+.lyrics-line {
+  font-family: var(--lyrics-serif);
+  font-size: 20px;
+  line-height: 1.62;
+  padding: 10px 0 10px 18px;
+  color: color-mix(in srgb, var(--ink) 48%, transparent);
+}
+.lyrics-line .lyrics-stamp { display: none; }
+.lyrics-line[data-past="true"] { opacity: 0.75; }
+.lyrics-line[data-active="true"] {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--ink);
+  border-left-width: 3px;
+  border-left-color: var(--accent);
+}
+/* 侧栏：当前项是白色药丸。 */
+.lyrics-queue { border: 0; border-radius: 26px; background: color-mix(in srgb, var(--surface) 62%, transparent); backdrop-filter: blur(26px); }
+.lyrics-queue-item { padding: 7px 10px; border-radius: 12px; }
+.lyrics-queue-item[data-active="true"] { background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: 0 4px 14px rgba(24,32,38,.07); }
+.lyrics-queue-text { font-size: 13px; }
+/* 传输栏：大圆播放键。 */
+.lyrics-transport { border: 0; border-radius: 999px; background: color-mix(in srgb, var(--surface) 66%, transparent); padding: 12px 22px; }
+.lyrics-transport-buttons .lyrics-play { width: 52px; height: 52px; }
+.lyrics-transport-buttons svg { width: 20px; height: 20px; }
+.lyrics-transport-buttons button { width: 38px; height: 38px; font-size: 18px; }
 
 /* ── 歌词界面：按参考图重排 ───────────────────────────────── */
 /* 卡片与播放列表并排；播放列表是右侧竖栏，不再是底部横条。 */
@@ -2497,6 +2639,7 @@
   border-top: 1px solid var(--line);
 }
 .lyrics-pager-label { font-size: 9px; letter-spacing: 1.4px; color: var(--muted); }
+.lyrics-collection { margin: 10px 0 0; font-size: 8px; letter-spacing: 1.6px; color: color-mix(in srgb, var(--ink) 38%, transparent); }
 .lyrics-pager-row {
   display: flex;
   align-items: baseline;

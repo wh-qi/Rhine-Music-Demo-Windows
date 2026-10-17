@@ -323,6 +323,7 @@ stage.innerHTML = `
             <div class="lyrics-pager-row"><strong id="lyrics-index">--</strong><span>/ <i id="lyrics-total">--</i></span>
               <span class="lyrics-pager-arrows"><button type="button" data-action="prev" aria-label="上一个">‹</button><button type="button" data-action="next" aria-label="下一个">›</button></span></div>
           </div>
+          <small class="lyrics-collection">LOCAL COLLECTION / RHINE LAB</small>
         </div>
         <div class="lyrics-right">
           <header class="lyrics-head"><span class="lyrics-eyebrow">LYRICS</span>
