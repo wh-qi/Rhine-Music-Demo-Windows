@@ -2446,11 +2446,12 @@
 /* 卡片与传输栏压在背景之上。返回按钮本来就是 absolute，只抬层级、不改定位。 */
 .lyrics-stage, .lyrics-transport { position: relative; z-index: 1; }
 /* 品牌块占到 y≈90，返回按钮必须从它下面开始，否则会压字。 */
-/* 品牌块占到 y≈115，返回按钮放到它下面、卡片左侧的留白区。 */
-.music-lyrics > .music-back { z-index: 2; left: 42px; top: 190px; }
+/* 品牌块占到 y≈90；返回按钮固定放在 100px 的留白带里，
+   卡片从 148px 开始，所以窗口再小也不会压到卡片内容。 */
+.music-lyrics > .music-back { z-index: 2; left: 34px; top: 98px; }
 .music-lyrics > .music-back { background: color-mix(in srgb, var(--surface) 70%, transparent); padding: 4px 10px; border-radius: 8px; }
-/* 顶部导航占掉约 90px，返回按钮再占一行，卡片从 128px 开始。 */
-.music-lyrics { padding-top: 128px; }
+/* 顶部导航约 90px + 返回按钮一行，卡片从 148px 开始。 */
+.music-lyrics { padding-top: 148px; }
 /* 顶部导航浮在漫射背景之上（参考图也是这个关系），否则会被整屏背景盖掉。 */
 .music-app[data-lyrics="true"] .music-header { z-index: 13; }
 /* 打开时背景轻微放大收束，和卡片的缩放同步。 */
@@ -3038,9 +3039,11 @@
 /* ── 歌词界面：返回按钮归位（放在最末尾，压过前面所有 .music-back 规则）── */
 /* 品牌块占住左上角，返回按钮挪到左侧留白、垂直居中，两者不再重叠。 */
 .music-app .music-lyrics > .music-back {
-  top: 50%;
-  left: 30px;
-  transform: translateY(-50%);
+  /* 回到正常流：绝对定位在「内容居中」的容器里无法保证不压卡片。
+     作为流内元素它会把卡片自然顶下去，任何窗口尺寸都不会重叠。 */
+  position: static;
+  align-self: flex-start;
+  margin: 0 0 10px 30px;
   z-index: 2;
   padding: 7px 12px;
   border-radius: 10px;
@@ -3051,22 +3054,23 @@
 /* ══ 液态玻璃：最终覆盖 ══════════════════════════════════════
    前面有多条同类规则互相覆盖，这里用更高优先级统一收口。
    改样式前先核对 getComputedStyle，别再靠叠规则猜。 */
+/* 玻璃本体几乎全透，只叠 8~9% 磨砂白。 */
 .music-app .music-lyrics .lyrics-card {
-  background: color-mix(in srgb, var(--surface) 12%, transparent);
+  background: color-mix(in srgb, var(--surface) 8%, transparent);
 }
 .music-app .music-lyrics .lyrics-queue {
-  background: color-mix(in srgb, var(--surface) 11%, transparent);
+  background: color-mix(in srgb, var(--surface) 7%, transparent);
 }
 .music-app .music-lyrics .lyrics-transport {
-  background: color-mix(in srgb, var(--surface) 13%, transparent);
+  background: color-mix(in srgb, var(--surface) 9%, transparent);
 }
 /* 玻璃边缘：靠内高光勾形状，而不是靠底色。 */
 .music-app .music-lyrics .lyrics-card,
 .music-app .music-lyrics .lyrics-queue,
 .music-app .music-lyrics .lyrics-transport {
+  /* 玻璃靠边缘高光勾形状，不靠底色和重阴影。 */
   box-shadow:
-    0 26px 70px rgba(24, 32, 38, 0.10),
+    0 12px 36px rgba(24, 32, 38, 0.07),
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.4),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.45);
 }
