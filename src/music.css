@@ -2511,16 +2511,16 @@
 }
 /* 封面只做染色，不能盖住架子。 */
 .lyrics-backdrop img {
-  filter: blur(38px) saturate(1.45) brightness(1.06);
+  /* 模糊太重会把封面平均成一片灰；22px 还能留住色块和明暗。 */
+  filter: blur(22px) saturate(1.85) brightness(1.0);
   opacity: 0;
   mix-blend-mode: normal;
 }
-.lyrics-backdrop img[data-active="true"] { opacity: 0.92; }
+.lyrics-backdrop img[data-active="true"] { opacity: 1; }
 /* 只留极薄一层主题色，压住过曝。 */
 .lyrics-backdrop::after {
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--surface) 6%, transparent),
-    color-mix(in srgb, var(--surface) 22%, transparent));
+  /* 不再叠白纱，否则封面的颜色会被洗掉；可读性靠卡片自己的磨砂层保证。 */
+  display: none;
 }
 /* 卡片：低不透明度 + 强模糊 + 玻璃边缘高光。 */
 .lyrics-card {
@@ -3055,14 +3055,18 @@
    前面有多条同类规则互相覆盖，这里用更高优先级统一收口。
    改样式前先核对 getComputedStyle，别再靠叠规则猜。 */
 /* 玻璃本体几乎全透，只叠 8~9% 磨砂白。 */
+/* 背景恢复颜色后，卡片需要一点存在感才读得清字，但仍是半透。 */
 .music-app .music-lyrics .lyrics-card {
-  background: color-mix(in srgb, var(--surface) 8%, transparent);
+  background: color-mix(in srgb, var(--surface) 22%, transparent);
+  backdrop-filter: blur(34px) saturate(1.15) brightness(1.04);
 }
 .music-app .music-lyrics .lyrics-queue {
-  background: color-mix(in srgb, var(--surface) 7%, transparent);
+  background: color-mix(in srgb, var(--surface) 20%, transparent);
+  backdrop-filter: blur(30px) saturate(1.12) brightness(1.04);
 }
 .music-app .music-lyrics .lyrics-transport {
-  background: color-mix(in srgb, var(--surface) 9%, transparent);
+  background: color-mix(in srgb, var(--surface) 22%, transparent);
+  backdrop-filter: blur(30px) saturate(1.12) brightness(1.04);
 }
 /* 玻璃边缘：靠内高光勾形状，而不是靠底色。 */
 .music-app .music-lyrics .lyrics-card,
@@ -3070,7 +3074,7 @@
 .music-app .music-lyrics .lyrics-transport {
   /* 玻璃靠边缘高光勾形状，不靠底色和重阴影。 */
   box-shadow:
-    0 12px 36px rgba(24, 32, 38, 0.07),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+    0 10px 30px rgba(24, 32, 38, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.3);
 }
