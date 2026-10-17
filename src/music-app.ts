@@ -1270,6 +1270,9 @@ function openLyrics() {
   if (!album || !section) return;
   if (overview) setOverview(false, false);
   syncLyricsChrome();
+  // 刚打开时播放器状态可能没变化，这里主动同步一次，
+  // 否则模式按钮和静音图标是空的（要等下次播放状态更新才出现）。
+  syncLyricsTransport(player.state);
   clearTimeout(lyricsHideTimer);
   section.hidden = false;
   // 专辑架自己的导航与按键提示要让位，否则会从卡片下方露出来。

@@ -3095,20 +3095,21 @@
   left: 0;
   right: 0;
   top: 50%;
-  height: 2px;
-  margin-top: -1px;
+  height: 1.5px;
+  margin-top: -0.75px;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--ink) 15%, transparent);
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
 }
 .lyrics-progress-fill {
   position: absolute;
   left: 0;
   top: 50%;
-  height: 2px;
-  margin-top: -1px;
+  height: 1.5px;
+  margin-top: -0.75px;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--ink) 78%, transparent);
+  background: color-mix(in srgb, var(--ink) 52%, transparent);
 }
+/* 彻底去掉原生 range 的外观，否则会露出轨道和滑块，看起来像一条黑边。 */
 .lyrics-progress input[type="range"] {
   position: absolute;
   inset: 0;
@@ -3117,6 +3118,16 @@
   margin: 0;
   opacity: 0;
   cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+.lyrics-progress input[type="range"]::-webkit-slider-runnable-track { background: transparent; }
+.lyrics-progress input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 1px;
+  height: 1px;
+  background: transparent;
 }
 /* 悬停时给一个可拖动的暗示。 */
 .lyrics-progress:hover::before { background: color-mix(in srgb, var(--ink) 26%, transparent); }
@@ -3197,10 +3208,10 @@
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 3px 14px;
-  flex: 1 1 240px;
-  min-width: 150px;
-  max-width: 460px;
+  gap: 4px 16px;
+  flex: 1 1 560px;
+  min-width: 200px;
+  max-width: 820px;
 }
 .lyrics-timeline .lyrics-progress { grid-column: 1 / -1; }
 #lyrics-now-current { justify-self: start; }
