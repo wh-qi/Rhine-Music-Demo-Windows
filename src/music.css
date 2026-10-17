@@ -3344,4 +3344,29 @@
   .music-app:not([data-layout="portrait"]) .lyrics-line[data-active="true"] { font-size: 26px; }
 }
 
+
+/* ══ 双语歌词：主语言在上，译词小一号贴在下面 ════════════════ */
+/* .lyrics-line 是 flex 容器，display:block 的译词仍会排成 flex item，
+   必须把整行改成块级，译词才会落到下一行。 */
+.music-lyrics .lyrics-line { display: block; }
+.music-lyrics .lyrics-line[data-active="true"] { font-weight: 700; }
+.music-lyrics .lyrics-translation {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+  line-height: 1.55;
+  font-weight: 400;
+  letter-spacing: 0;
+  opacity: 0.72;
+}
+/* 播放到这一句时，主语言和译词一起加粗放大。 */
+.music-lyrics .lyrics-line[data-active="true"] .lyrics-translation {
+  font-size: 20px;
+  font-weight: 700;
+  opacity: 0.92;
+}
+/* 竖屏再收一号。 */
+.music-app[data-layout="portrait"] .lyrics-translation { font-size: 13px; }
+.music-app[data-layout="portrait"] .lyrics-line[data-active="true"] .lyrics-translation { font-size: 16px; }
+
 .lyrics-transport-text strong, .lyrics-transport-text small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

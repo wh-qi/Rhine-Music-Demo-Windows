@@ -8,6 +8,32 @@
 export interface LyricsLine {
   ms: number;
   text: string;
+  /** 同时间戳的第二行视为译词，贴在主语言下面显示。 */
+  translation?: string;
+}
+
+// 作词/作曲一类的头部信息常与下一行同时间戳，不能当成译词配对。
+const CREDIT = /^(作词|作詞|作曲|編曲|编曲|lyric|compos|arrang|mix|master)/i;
+
+/** 把「同一时间戳的两行」合并成 主语言 + 译词。 */
+export function groupTranslations(lines: LyricsLine[]): LyricsLine[] {
+  const merged: LyricsLine[] = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const next = lines[i + 1];
+    const paired =
+      next &&
+      next.ms === line.ms &&
+      // 三行以上同时间的多半是头部 credits，不做配对。
+      (lines[i + 2]?.ms !== line.ms) &&
+      !CREDIT.test(line.text) &&
+      !CREDIT.test(next.text);
+    if (paired) {
+      merged.push({ ms: line.ms, text: line.text, translation: next.text });
+      i += 1;
+    } else merged.push(line);
+  }
+  return merged;
 }
 
 const formatStamp = (ms: number) => {
@@ -47,8 +73,8 @@ export class LyricsView {
       const body = (await response.json()) as { lines?: LyricsLine[] };
       if (controller.signal.aborted || this.trackId !== trackId) return;
       const lines = Array.isArray(body.lines)
-        ? body.lines.filter((line) => Number.isFinite(line?.ms) && typeof line.text === "string" && line.text)
-          .sort((a, b) => a.ms - b.ms)
+        ? groupTranslations(body.lines.filter((line) => Number.isFinite(line?.ms) && typeof line.text === "string" && line.text)
+          .sort((a, b) => a.ms - b.ms))
         : [];
       if (!lines.length) throw new Error("歌词为空");
       this.lines = lines;
@@ -72,7 +98,13 @@ export class LyricsView {
       item.className = "lyrics-line";
       item.dataset.ms = String(line.ms);
       item.innerHTML = `<span class="lyrics-stamp">${formatStamp(line.ms)}</span><span class="lyrics-text"></span>`;
-      (item.lastElementChild as HTMLElement).textContent = line.text;
+      (item.querySelector(".lyrics-text") as HTMLElement).textContent = line.text;
+      if (line.translation) {
+        const sub = document.createElement("span");
+        sub.className = "lyrics-translation";
+        sub.textContent = line.translation;
+        item.append(sub);
+      }
       item.title = `${title} · ${artist}`;
       fragment.append(item);
     }
