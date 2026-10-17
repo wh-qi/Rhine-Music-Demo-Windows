@@ -346,12 +346,14 @@ stage.innerHTML = `
     <div class="lyrics-transport">
       <div class="lyrics-transport-thumb"><img id="lyrics-thumb" alt=""></div>
       <div class="lyrics-transport-text"><strong id="lyrics-now-title"></strong><small id="lyrics-now-artist"></small></div>
-      <span class="lyrics-transport-time" id="lyrics-now-current">00:00</span>
-      <div class="lyrics-progress" id="lyrics-progress">
-        <div class="lyrics-progress-fill" id="lyrics-progress-fill"></div>
-        <input type="range" id="lyrics-seek" min="0" max="1000" step="1" value="0" aria-label="播放进度">
+      <div class="lyrics-timeline">
+        <span class="lyrics-transport-time" id="lyrics-now-current">00:00</span>
+        <span class="lyrics-transport-time" id="lyrics-now-total">00:00</span>
+        <div class="lyrics-progress" id="lyrics-progress">
+          <div class="lyrics-progress-fill" id="lyrics-progress-fill"></div>
+          <input type="range" id="lyrics-seek" min="0" max="1000" step="1" value="0" aria-label="播放进度">
+        </div>
       </div>
-      <span class="lyrics-transport-time" id="lyrics-now-total">00:00</span>
       <div class="lyrics-transport-buttons">
         <button type="button" data-action="player-prev" aria-label="上一首">‹</button>
         <button type="button" data-action="play-pause" class="lyrics-play" aria-label="播放">▶</button>

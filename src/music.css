@@ -3190,5 +3190,59 @@
   color: color-mix(in srgb, var(--surface) 96%, transparent);
 }
 /* 标题可收缩，别把右侧控件挤出去。 */
-.lyrics-transport-text { min-width: 0; overflow: hidden; }
+.lyrics-transport-text { min-width: 0; overflow: hidden; }.lyrics-transport-text strong, .lyrics-transport-text small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ══ 进度条：按参考图，两个时间在上、细线在下 ═══════════════ */
+.lyrics-timeline {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 3px 14px;
+  flex: 1 1 240px;
+  min-width: 150px;
+  max-width: 460px;
+}
+.lyrics-timeline .lyrics-progress { grid-column: 1 / -1; }
+#lyrics-now-current { justify-self: start; }
+#lyrics-now-total { justify-self: end; }
+.lyrics-transport-time {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--ink) 52%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+/* 播放头的小圆点，按参考图那种克制的大小。 */
+.lyrics-progress-fill::after {
+  content: "";
+  position: absolute;
+  right: -3px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ink) 78%, transparent);
+}
+
+/* ══ 歌词列表可滚动：卡片行高必须受约束 ══════════════════════
+   原来 .lyrics-card 只写了 grid-template-columns，这一行按内容撑开，
+   溢出被 overflow: hidden 裁掉，于是 .lyrics-lines 的 scrollHeight
+   永远等于 clientHeight，滚轮怎么滚都没反应。 */
+.lyrics-card {
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+}
+.lyrics-right {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.lyrics-lines {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .lyrics-transport-text strong, .lyrics-transport-text small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
