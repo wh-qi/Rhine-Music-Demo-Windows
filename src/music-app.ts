@@ -321,9 +321,9 @@ stage.innerHTML = `
           <p id="lyrics-artist" class="lyrics-artist"></p>
           <p id="lyrics-meta" class="lyrics-meta"></p>
           <div class="lyrics-pager">
-            <small class="lyrics-pager-label">ALBUM / SELECT</small>
+            <small class="lyrics-pager-label">TRACK / SELECT</small>
             <div class="lyrics-pager-row"><strong id="lyrics-index">--</strong><span>/ <i id="lyrics-total">--</i></span>
-              <span class="lyrics-pager-arrows"><button type="button" data-action="prev" aria-label="上一个">‹</button><button type="button" data-action="next" aria-label="下一个">›</button></span></div>
+              <span class="lyrics-pager-arrows"><button type="button" data-action="player-prev" aria-label="上一首歌曲">‹</button><button type="button" data-action="player-next" aria-label="下一首歌曲">›</button></span></div>
           </div>
           <small class="lyrics-collection">LOCAL COLLECTION / RHINE LAB</small>
         </div>
@@ -1147,10 +1147,13 @@ function syncLyricsChrome() {
   $("#lyrics-meta").textContent = album
     ? ["MUSIC ARCHIVE", album.title, track?.format ?? ""].filter(Boolean).join("  /  ")
     : "";
+  // 翻页箭头现在切歌曲，所以这里给的是当前歌在播放列表里的位置。
+  const queue = lyricsQueueTracks();
+  const position = track ? queue.findIndex((entry) => entry.id === track.id) : -1;
   const index = document.querySelector("#lyrics-index");
   const total = document.querySelector("#lyrics-total");
-  if (index) index.textContent = String(selected + 1).padStart(2, "0");
-  if (total) total.textContent = String(records.length).padStart(2, "0");
+  if (index) index.textContent = String(position >= 0 ? position + 1 : 0).padStart(2, "0");
+  if (total) total.textContent = String(queue.length).padStart(2, "0");
   const thumb = document.querySelector<HTMLImageElement>("#lyrics-thumb");
   if (thumb) thumb.src = album?.coverUrl ?? "";
   syncLyricsBackdrop(album?.coverUrl ?? "");
