@@ -310,6 +310,7 @@ stage.innerHTML = `
   </section>
   <section id="music-lyrics" class="music-lyrics" aria-label="歌词" hidden>
     <button class="music-back" data-action="lyrics-back">← 返回专辑 <kbd>ESC</kbd></button>
+    <div class="lyrics-backdrop" aria-hidden="true"><img id="lyrics-backdrop-a" alt="" decoding="async"><img id="lyrics-backdrop-b" alt="" decoding="async"></div>
     <div class="lyrics-stage">
       <article class="lyrics-card">
         <div class="lyrics-left">
@@ -1119,7 +1120,40 @@ function syncLyricsChrome() {
   if (total) total.textContent = String(records.length).padStart(2, "0");
   const thumb = document.querySelector<HTMLImageElement>("#lyrics-thumb");
   if (thumb) thumb.src = album?.coverUrl ?? "";
+  syncLyricsBackdrop(album?.coverUrl ?? "");
   renderLyricsQueue(album, track?.id);
+}
+
+/**
+ * 背景漫射：把当前封面铺满整屏、重度模糊后做底。
+ * 用两层交替，换曲时是新图淡入、旧图淡出，不会闪一下白底。
+ */
+let backdropFront = 0;
+let backdropRequested = "";
+function syncLyricsBackdrop(url: string) {
+  if (!url || url === backdropRequested) return;
+  backdropRequested = url;
+  const layers = [
+    document.querySelector<HTMLImageElement>("#lyrics-backdrop-a"),
+    document.querySelector<HTMLImageElement>("#lyrics-backdrop-b"),
+  ];
+  const current = layers[backdropFront];
+  const incoming = layers[backdropFront ^ 1];
+  if (!incoming || !current) return;
+  incoming.onload = () => {
+    // 加载完再切，避免切到一张还没解码的图。
+    incoming.dataset.active = "true";
+    current.dataset.active = "false";
+    backdropFront ^= 1;
+    incoming.onload = null;
+  };
+  incoming.src = url;
+  // 已经缓存过就不会再触发 load，这里补一次。
+  if (incoming.complete && incoming.naturalWidth > 0) {
+    incoming.dataset.active = "true";
+    current.dataset.active = "false";
+    backdropFront ^= 1;
+  }
 }
 
 /** 底部传输栏：与顶部那套读同一份播放器状态，不另存一份。 */

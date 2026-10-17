@@ -2411,6 +2411,53 @@
 .music-lyrics[data-lyrics-state="loading"] .lyrics-empty { display: block; }
 .music-lyrics[data-lyrics-state="loading"] .lyrics-lines { opacity: 0.35; }
 
+/* ── 背景漫射：用当前封面铺满整屏做底 ─────────────────────── */
+.music-lyrics {
+  /* 背景层要覆盖整个界面，所以这里改成相对定位的层叠上下文根。 */
+  isolation: isolate;
+}
+.lyrics-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.lyrics-backdrop img {
+  position: absolute;
+  /* 超出边界再模糊，否则四周会出现模糊后的透明边。 */
+  inset: -18%;
+  width: 136%;
+  height: 136%;
+  object-fit: cover;
+  filter: blur(46px) saturate(1.45) brightness(1.12);
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  transform: scale(1.06);
+}
+.lyrics-backdrop img[data-active="true"] { opacity: 1; }
+/* 压一层主题底色，保证卡片和文字在任何封面下都可读。 */
+.lyrics-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--surface) 58%, transparent),
+    color-mix(in srgb, var(--surface) 78%, transparent));
+}
+/* 卡片与传输栏压在背景之上。返回按钮本来就是 absolute，只抬层级、不改定位。 */
+.lyrics-stage, .lyrics-transport { position: relative; z-index: 1; }
+.music-lyrics > .music-back { z-index: 2; top: 74px; left: 42px; }
+/* 给返回按钮让出一行，卡片不要压住它。 */
+.music-lyrics { padding-top: 106px; }
+/* 顶部导航浮在漫射背景之上（参考图也是这个关系），否则会被整屏背景盖掉。 */
+.music-app[data-lyrics="true"] .music-header { z-index: 13; }
+/* 打开时背景轻微放大收束，和卡片的缩放同步。 */
+.lyrics-backdrop { opacity: 0; transition: opacity 0.4s ease; }
+.music-lyrics[data-open="true"] .lyrics-backdrop { opacity: 1; }
+/* 减少动效：跳过淡入淡出。 */
+.music-app[data-reduced="true"] .lyrics-backdrop img, .music-app[data-reduced="true"] .lyrics-backdrop { transition: none; }
+
 /* ── 歌词界面：按参考图重排 ───────────────────────────────── */
 /* 卡片与播放列表并排；播放列表是右侧竖栏，不再是底部横条。 */
 .lyrics-stage {
