@@ -347,13 +347,24 @@ stage.innerHTML = `
       <div class="lyrics-transport-thumb"><img id="lyrics-thumb" alt=""></div>
       <div class="lyrics-transport-text"><strong id="lyrics-now-title"></strong><small id="lyrics-now-artist"></small></div>
       <span class="lyrics-transport-time" id="lyrics-now-current">00:00</span>
-      <div class="lyrics-progress"><div class="lyrics-progress-fill" id="lyrics-progress-fill"></div></div>
+      <div class="lyrics-progress" id="lyrics-progress">
+        <div class="lyrics-progress-fill" id="lyrics-progress-fill"></div>
+        <input type="range" id="lyrics-seek" min="0" max="1000" step="1" value="0" aria-label="播放进度">
+      </div>
       <span class="lyrics-transport-time" id="lyrics-now-total">00:00</span>
       <div class="lyrics-transport-buttons">
-        <button type="button" data-action="cycle-play-mode" class="lyrics-mode" id="lyrics-mode" aria-label="播放模式：列表循环"></button>
         <button type="button" data-action="prev" aria-label="上一首">‹</button>
         <button type="button" data-action="play-pause" class="lyrics-play" aria-label="播放">▶</button>
         <button type="button" data-action="next" aria-label="下一首">›</button>
+      </div>
+      <div class="lyrics-volume">
+        <button type="button" data-action="lyrics-mute" id="lyrics-mute" aria-label="静音"></button>
+        <input type="range" id="lyrics-volume" min="0" max="100" step="1" value="65" aria-label="音量">
+      </div>
+      <div class="lyrics-modes" id="lyrics-modes" role="group" aria-label="播放模式">
+        <button type="button" data-play-mode="list">列表</button>
+        <button type="button" data-play-mode="one">单曲</button>
+        <button type="button" data-play-mode="shuffle">随机</button>
       </div>
     </div>
   </section>
@@ -1162,6 +1173,9 @@ function syncLyricsBackdrop(url: string) {
 }
 
 /** 底部传输栏：与顶部那套读同一份播放器状态，不另存一份。 */
+/** 静音前记住的音量，取消静音时恢复。 */
+let lastAudibleVolume = 0.65;
+
 function syncLyricsTransport(state: MusicPlayerState) {
   const title = document.querySelector("#lyrics-now-title");
   const artist = document.querySelector("#lyrics-now-artist");
@@ -1171,15 +1185,27 @@ function syncLyricsTransport(state: MusicPlayerState) {
   const total = document.querySelector("#lyrics-now-total");
   if (current) current.textContent = time(state.currentTime);
   if (total) total.textContent = time(state.duration);
+  const ratio = state.duration > 0 ? Math.min(1, state.currentTime / state.duration) : 0;
   const fill = document.querySelector<HTMLElement>("#lyrics-progress-fill");
-  if (fill) fill.style.width = state.duration > 0 ? `${Math.min(100, (state.currentTime / state.duration) * 100)}%` : "0%";
-  const mode = document.querySelector<HTMLElement>("#lyrics-mode");
-  if (mode) {
-    const view = playModeViews[normalizeMusicPlayMode(state.playMode)];
-    mode.innerHTML = view.icon;
-    mode.dataset.mode = state.playMode;
-    mode.setAttribute("aria-label", `播放模式：${view.label}`);
+  if (fill) fill.style.width = `${ratio * 100}%`;
+  // 拖动过程中不要让播放进度把滑块拽回去。
+  const seek = document.querySelector<HTMLInputElement>("#lyrics-seek");
+  if (seek && seek.dataset.dragging !== "true") seek.value = String(Math.round(ratio * 1000));
+  const mute = document.querySelector<HTMLElement>("#lyrics-mute");
+  if (mute) {
+    const silent = state.volume <= 0.001;
+    mute.innerHTML = silent
+      ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6h2.2L8.5 3.3v9.4L5.2 10H3z"/><path d="M11 6l3 4M14 6l-3 4"/></svg>'
+      : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6h2.2L8.5 3.3v9.4L5.2 10H3z"/><path d="M11 5.8a3.4 3.4 0 0 1 0 4.4"/></svg>';
+    mute.setAttribute("aria-label", silent ? "取消静音" : "静音");
+    mute.dataset.silent = silent ? "true" : "false";
   }
+  const volume = document.querySelector<HTMLInputElement>("#lyrics-volume");
+  if (volume) volume.value = String(Math.round(state.volume * 100));
+  const modes = document.querySelectorAll<HTMLElement>("#lyrics-modes [data-play-mode]");
+  modes.forEach((node) => {
+    node.dataset.active = node.dataset.playMode === state.playMode ? "true" : "false";
+  });
   const play = document.querySelector(".lyrics-play");
   if (play) {
     play.innerHTML = state.playing ? icons.pause : icons.play;
@@ -2144,6 +2170,46 @@ function playAlbum(id?: string) {
   void player.play(id || selectedTrack || a.tracks[0].id, a.tracks);
 }
 
+// 进度条拖动：input 事件里实时 seek；拖动期间用 data-dragging 挡住状态回写。
+const seekSlider = document.querySelector<HTMLInputElement>("#lyrics-seek");
+if (seekSlider) {
+  const applySeek = () => {
+    const total = player.state.duration;
+    if (!(total > 0)) return;
+    player.seek((Number(seekSlider.value) / 1000) * total);
+  };
+  seekSlider.addEventListener("input", () => {
+    seekSlider.dataset.dragging = "true";
+    applySeek();
+  });
+  const release = () => {
+    applySeek();
+    delete seekSlider.dataset.dragging;
+  };
+  seekSlider.addEventListener("change", release);
+  seekSlider.addEventListener("pointerup", release);
+}
+// 音量：与设置面板里的 #volume 共用同一份偏好。
+const volumeSlider = document.querySelector<HTMLInputElement>("#lyrics-volume");
+if (volumeSlider) {
+  volumeSlider.addEventListener("input", () => {
+    const next = Number(volumeSlider.value) / 100;
+    preferences.volume = next;
+    savePrefs();
+    player.setVolume(next);
+    const panel = document.querySelector<HTMLInputElement>("#volume");
+    if (panel && !player.state.bitPerfect) panel.value = String(Math.round(next * 100));
+  });
+}
+// 播放模式分段控件。
+$("#lyrics-modes").addEventListener("click", (event) => {
+  const node = (event.target as HTMLElement).closest<HTMLElement>("[data-play-mode]");
+  if (!node) return;
+  const next = normalizeMusicPlayMode(node.dataset.playMode);
+  preferences.playMode = next;
+  savePrefs();
+  player.setPlayMode(next);
+});
 // 点击歌词行跳到该句。放在 document 监听之前，先处理这一层。
 $("#lyrics-queue-list").addEventListener("click", (event) => {
   const item = (event.target as HTMLElement).closest<HTMLElement>(".lyrics-queue-item");
@@ -2275,6 +2341,20 @@ document.addEventListener("click", (e) => {
     case "open":
       setMode("detail");
       break;
+    case "lyrics-mute": {
+      const current = player.state.volume;
+      if (current > 0.001) {
+        lastAudibleVolume = current;
+        preferences.volume = 0;
+        player.setVolume(0);
+      } else {
+        const restore = lastAudibleVolume > 0.001 ? lastAudibleVolume : 0.65;
+        preferences.volume = restore;
+        player.setVolume(restore);
+      }
+      savePrefs();
+      break;
+    }
     case "cycle-play-mode": {
       // 三态轮转；顺序固定为 列表 → 单曲 → 随机。
       const cycle: MusicPlayMode[] = ["list", "one", "shuffle"];
