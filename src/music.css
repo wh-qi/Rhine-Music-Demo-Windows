@@ -2231,6 +2231,26 @@
 .album-callout .open-album {
   margin-top: 22px;
 }
+/* 按歌曲排列时「打开专辑」降为次要链接：小一号、无下边框、靠左。 */
+.album-callout .open-album.callout-minor {
+  /* 它是 flex 容器（.album-callout）的子项，默认 align-self: stretch 会撑满交叉轴；
+     必须自己靠左收窄，否则「打开专辑」会占满整行。 */
+  align-self: flex-start;
+  width: auto;
+  margin-top: 8px;
+  padding: 2px 0 4px;
+  font-size: 11px;
+  color: var(--muted);
+  border-bottom: 0;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.album-callout .open-album.callout-minor > span {
+  font-size: 14px;
+}
+.album-callout .open-album.callout-minor:hover {
+  color: var(--accent);
+}
 #album-detail-content > h1 {
   font-size: clamp(24px, 2.45vw, 39px);
 }

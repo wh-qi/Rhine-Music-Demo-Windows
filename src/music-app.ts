@@ -281,7 +281,11 @@ stage.innerHTML = `
       <div class="selection-rule"><span id="selection-code"><span id="selection-code-label">ALBUM</span> <span id="selection-code-number">001</span></span><span id="selection-format"></span></div>
       <h1 id="selection-title"></h1><p id="selection-artist" class="selection-artist"></p>
       <div class="selection-meta" id="selection-meta"></div>
-      <button class="open-album" data-action="open">打开专辑 <span>↗</span></button>
+      ${preferences.sortMode === "track"
+        ? /* 按歌曲排列时以单曲为单位：播放是主操作，打开专辑降为次要链接。 */
+          `<button class="open-album" data-action="play-selected">播放 <span>▶</span></button>
+       <button class="open-album callout-minor" data-action="open">打开专辑 <span>↗</span></button>`
+        : `<button class="open-album" data-action="open">打开专辑 <span>↗</span></button>`}
     </div>
     <div class="music-navigation">
       <div class="music-counter"><span class="music-eyebrow">ALBUM / SELECT</span><div><b id="selection-number">01</b><span>/ <i id="selection-total">00</i></span></div></div>
@@ -2026,6 +2030,10 @@ document.addEventListener("click", (e) => {
       break;
     case "open":
       setMode("detail");
+      break;
+    case "play-selected":
+      // 按歌曲排列：直接播选中的那首（playAlbum 会优先用 record.track）。
+      playAlbum();
       break;
     case "back":
       setMode("archive");
