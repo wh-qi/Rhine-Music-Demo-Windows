@@ -339,7 +339,7 @@ stage.innerHTML = `
     </div>
     <div class="lyrics-transport">
       <div class="lyrics-transport-thumb"><img id="lyrics-thumb" alt=""></div>
-      <div class="lyrics-transport-text"><strong id="lyrics-now-title"></strong><small id="lyrics-now-artist"></small></div>
+      <div class="lyrics-transport-text"><strong id="lyrics-now-title"></strong><span class="lyrics-now-sub"><small id="lyrics-now-artist"></small><span class="lyrics-eq" aria-hidden="true"><i></i><i></i><i></i></span></span></div>
       <div class="lyrics-timeline">
         <span class="lyrics-transport-time" id="lyrics-now-current">00:00</span>
         <span class="lyrics-transport-time" id="lyrics-now-total">00:00</span>
@@ -359,6 +359,7 @@ stage.innerHTML = `
         <button type="button" data-action="lyrics-mute" id="lyrics-mute" aria-label="静音"></button>
         <input type="range" id="lyrics-volume" min="0" max="100" step="1" value="65" aria-label="音量">
       </div>
+      <button type="button" data-action="reveal-track" class="lyrics-more" id="lyrics-more" aria-label="更多">…</button>
       <aside class="lyrics-queue" id="lyrics-queue" aria-label="播放列表" hidden>
         <header class="lyrics-queue-head"><span>播放列表</span><small id="lyrics-queue-count"></small></header>
         <ol class="lyrics-queue-list" id="lyrics-queue-list"></ol>
@@ -1194,6 +1195,9 @@ function syncLyricsBackdrop(url: string) {
 let lastAudibleVolume = 0.65;
 
 function syncLyricsTransport(state: MusicPlayerState) {
+  // 均衡器只在播放时跳动。
+  const transport = document.querySelector<HTMLElement>(".lyrics-transport");
+  if (transport) transport.dataset.playing = state.playing ? "true" : "false";
   const title = document.querySelector("#lyrics-now-title");
   const artist = document.querySelector("#lyrics-now-artist");
   if (title) title.textContent = state.currentTrack?.title ?? "";
@@ -1882,6 +1886,7 @@ const desktopBridge = () =>
       onTransport?(handler: (action: string) => void): () => void;
       getStartupFlags?(): Promise<{ disableGpuVsync: boolean }>;
       setStartupFlag?(flag: "disableGpuVsync", value: boolean): Promise<{ disableGpuVsync: boolean }>;
+      revealTrack?(trackId: string): Promise<boolean>;
       platform: string;
       version: string;
     };
@@ -2377,6 +2382,14 @@ document.addEventListener("click", (e) => {
     case "open":
       setMode("detail");
       break;
+    case "reveal-track": {
+      const track = player.state.currentTrack;
+      if (!track) { notify("还没有正在播放的歌曲。"); break; }
+      const bridge = desktopBridge();
+      if (!bridge?.revealTrack) { notify("只有桌面版支持打开文件位置。"); break; }
+      void bridge.revealTrack(track.id).then((ok) => { if (!ok) notify("没能定位到这首歌的文件。"); });
+      break;
+    }
     case "lyrics-mute": {
       const current = player.state.volume;
       if (current > 0.001) {

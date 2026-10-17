@@ -48,6 +48,18 @@ const DRAG_SCRIPT = `(() => {
 
 let mainWindow = null
 let runtime = null
+
+// 歌词界面「…」里的「打开文件位置」：渲染进程只有曲目 id，
+// 绝对路径一律由主进程按 id 解析，且必须落在已配置的音乐目录内。
+ipcMain.handle('rhine:revealTrack', async (event, trackId) => {
+  if (typeof trackId !== 'string' || !trackId) return false
+  const url = event.senderFrame?.url ?? ''
+  if (url && !url.startsWith(APP_ORIGIN)) return false
+  const file = runtime?.store?.trackFile?.(trackId)
+  if (!file?.path) return false
+  shell.showItemInFolder(file.path)
+  return true
+})
 let tray = null
 let quitting = false
 

@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('rhineDesktop', {
   // 启动期开关（垂直同步等）由主进程持有，因为 Chromium 只在启动时决定这些。
   getStartupFlags: () => ipcRenderer.invoke('settings:getStartupFlags'),
   setStartupFlag: (flag, value) => ipcRenderer.invoke('settings:setStartupFlag', flag, value),
+  // 歌曲文件位置：渲染进程拿不到绝对路径（快照里已剔除 _path），
+  // 所以由主进程按曲目 id 解析后再交给系统文件管理器。
+  revealTrack: (trackId) => ipcRenderer.invoke('rhine:revealTrack', trackId),
   platform: process.platform,
   version,
 })
