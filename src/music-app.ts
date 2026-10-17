@@ -353,9 +353,9 @@ stage.innerHTML = `
       </div>
       <span class="lyrics-transport-time" id="lyrics-now-total">00:00</span>
       <div class="lyrics-transport-buttons">
-        <button type="button" data-action="prev" aria-label="上一首">‹</button>
+        <button type="button" data-action="player-prev" aria-label="上一首">‹</button>
         <button type="button" data-action="play-pause" class="lyrics-play" aria-label="播放">▶</button>
-        <button type="button" data-action="next" aria-label="下一首">›</button>
+        <button type="button" data-action="player-next" aria-label="下一首">›</button>
       </div>
       <div class="lyrics-volume">
         <button type="button" data-action="lyrics-mute" id="lyrics-mute" aria-label="静音"></button>
@@ -418,6 +418,22 @@ function time(value: number) {
 function genreName(id: string) {
   return genres.find((g) => g.id === id)?.name || "未分类";
 }
+/**
+ * 歌词界面使用的曲目列表，与侧栏播放列表保持同一份：
+ * 按歌曲排列给全库，其余模式给当前专辑。
+ * 单曲专辑的库如果只拿专辑曲目当队列，next() 会在同一首上原地打转。
+ */
+function lyricsQueueTracks() {
+  if (preferences.sortMode === "track") return albums.flatMap((entry) => entry.tracks);
+  return albumOfTrack(player.state.currentTrack?.id)?.tracks ?? [];
+}
+
+/** 正在播放那首所在的专辑：随曲目走，不随选中项走（随机跨专辑时才不会错）。 */
+function albumOfTrack(trackId: string | undefined) {
+  if (!trackId) return currentAlbum();
+  return albums.find((entry) => entry.tracks.some((track) => track.id === trackId)) ?? currentAlbum();
+}
+
 function currentAlbum() {
   // 按歌曲排列时 record.id 是曲目 id，专辑要从 record.album 取；
   // 其余模式保持原来的 id 匹配。
@@ -1118,8 +1134,9 @@ let lyricsHideTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** 卡片外侧的专辑信息与封面，跟当前选中项走。 */
 function syncLyricsChrome() {
-  const album = currentAlbum();
   const track = player.state.currentTrack;
+  // 用正在播放那首所属的专辑，而不是当前选中项——随机跨专辑时才不会「封面变了歌没变」。
+  const album = albumOfTrack(track?.id);
   const image = document.querySelector<HTMLImageElement>("#lyrics-cover");
   if (image) {
     image.src = album?.coverUrl ?? "";
@@ -1657,9 +1674,8 @@ player.subscribe((state) => {
     lyricsView.sync(state.currentTime);
     syncLyricsTransport(state);
     syncLyricsChrome();
-    const album = currentAlbum();
     const track = state.currentTrack;
-    if (album && track) void lyricsView.load(track.id, track.title, track.artist);
+    if (track) void lyricsView.load(track.id, track.title, track.artist);
   }
   $("#play-pause").setAttribute("aria-pressed", String(state.playing));
   $("#play-pause").setAttribute(
@@ -2216,7 +2232,9 @@ $("#lyrics-queue-list").addEventListener("click", (event) => {
   const id = item?.dataset.track;
   // 按歌曲模式下条目可能来自别的专辑，队列要用它自己那张专辑。
   const album = albums.find((entry) => entry.id === item?.dataset.album) ?? currentAlbum();
-  if (album && id) void player.play(id, album.tracks);
+  // 队列用播放列表那份，点谁播谁之后「下一首」还能顺着这张单子走。
+  const queue = lyricsQueueTracks();
+  if (album && id) void player.play(id, queue.length ? queue : album.tracks);
 });
 $("#lyrics-lines").addEventListener("click", (event) => {
   const ms = lyricsView.lineAt(event.target as HTMLElement);
@@ -2406,6 +2424,16 @@ document.addEventListener("click", (e) => {
       break;
     case "next":
       stepAlbum(1);
+      break;
+    // 歌词传输栏用这两个：走播放器队列与播放模式，不是切换选中专辑。
+    // 先把队列对齐成侧栏播放列表那份，否则单曲专辑的库只有 1 首可轮。
+    case "player-prev":
+      player.setQueue(lyricsQueueTracks());
+      void player.previous();
+      break;
+    case "player-next":
+      player.setQueue(lyricsQueueTracks());
+      void player.next();
       break;
     case "genre-prev":
       stepGenre(-1);
@@ -2952,7 +2980,9 @@ async function start() {
         axis === "lane" ? stepGenre(direction) : stepAlbum(direction);
     };
     mountMusicWheelNavigation(stage, {
+      // 歌词界面打开时滚轮不应再切换专辑（否则封面和背景会跟着乱动）。
       enabled: () => ready && !boot?.active && presentation.phase === "archive" && !panel &&
+        stage.dataset.lyrics !== "true" &&
         columnFiles(fileLocation(navigationSelection()).lane).length > 1,
       navigate: stepAlbum,
       context: () => fileLocation(navigationSelection()).lane,
